@@ -69,8 +69,13 @@ class ImageSampler {
   static sample(img, canvasW, canvasH) {
     const cfg = CONFIG.particles;
 
-    // 0. 计算缩放和居中
-    const scale = Math.min(cfg.maxImageDim / img.width, cfg.maxImageDim / img.height);
+    // 0. 计算缩放和居中（确保采样图像不超过画布且不超过 maxImageDim）
+    const scale = Math.min(
+      cfg.maxImageDim / img.width,
+      cfg.maxImageDim / img.height,
+      canvasW / img.width  * 0.95,
+      canvasH / img.height * 0.95
+    );
     let sampleW = Math.round(img.width * scale);
     let sampleH = Math.round(img.height * scale);
 
@@ -118,12 +123,18 @@ class ImageSampler {
           const b = pixels[idx + 2];
           const warm = ColorPalette.warmShift(r, g, b);
 
+          // 亮度 → Z 深度（亮=近，暗=远）
+          const brightness = (r + g + b) / (3 * 255);
+          const depthRange = CONFIG.camera ? CONFIG.camera.depthRange : 0;
+          const depth = (brightness - 0.5) * 2 * depthRange;
+
           samples.push({
             x: imgX + x,
             y: imgY + y,
             r: warm.r,
             g: warm.g,
             b: warm.b,
+            depth: depth,
           });
         }
       }

@@ -1,25 +1,12 @@
 /**
- * controller.js — 聚合调度器 + 散落策略
- *
- * ConvergenceScheduler: 基于时间的三层门控
- *   - bg:  门开 @ t=0
- *   - mid: 门开 @ t=bgDelay (bg 60% 完成时)
- *   - fg:  门开 @ t=midDelay (mid 60% 完成时)
- *
- * ScatterStrategy: 粒子从质心向外爆炸式散落
- *   每个粒子分配一个椭圆上的随机位置作为散落目标
+ * controller.js — 3D 散落策略 + 波状汇聚调度
  */
 
 // ─── ScatterStrategy ───
 
 class ScatterStrategy {
   /**
-   * 为所有粒子生成散落目标位置
-   * @param {ParticleArray} particles
-   * @param {number} cx - 质心 x
-   * @param {number} cy - 质心 y
-   * @param {number} canvasW
-   * @param {number} canvasH
+   * 在 3D 球体内散落粒子，直接设当前位置到散落点（跳过爆开阶段）
    */
   static scatter(particles, cx, cy, canvasW, canvasH) {
     const data = particles.data;
@@ -28,21 +15,28 @@ class ScatterStrategy {
 
     for (let i = 0; i < n; i++) {
       const off = i * STRIDE;
-      // 椭圆上随机角度和半径偏移
-      const angle = Math.random() * Math.PI * 2;
-      const rFactor = 0.4 + Math.random() * 1.2;  // 半径散布
-      const rx = radius * rFactor;
-      const ry = radius * rFactor * (canvasH / canvasW);
 
-      const sx = cx + Math.cos(angle) * rx;
-      const sy = cy + Math.sin(angle) * ry;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = radius * (0.3 + Math.random() * 0.7);
 
-      data[off + P.SX] = Math.max(0, Math.min(canvasW, sx));
-      data[off + P.SY] = Math.max(0, Math.min(canvasH, sy));
+      const sx = cx + r * Math.sin(phi) * Math.cos(theta);
+      const sy = cy + r * Math.sin(phi) * Math.sin(theta);
+      const sz = (Math.random() - 0.5) * radius * 1.2;
 
-      // 初始速度：向外的小冲量
-      data[off + P.VX] = Math.cos(angle) * (2 + Math.random() * 3);
-      data[off + P.VY] = Math.sin(angle) * (2 + Math.random() * 3);
+      data[off + P.SX] = sx;
+      data[off + P.SY] = sy;
+      data[off + P.SZ] = sz;
+
+      // 直接设当前位置到散落点（跳过爆开，消除揭幕感）
+      data[off + P.X] = sx;
+      data[off + P.Y] = sy;
+      data[off + P.Z] = sz;
+
+      // 微小随机速度让初始态有"活着"的感觉
+      data[off + P.VX] = (Math.random() - 0.5) * 0.5;
+      data[off + P.VY] = (Math.random() - 0.5) * 0.5;
+      data[off + P.VZ] = (Math.random() - 0.5) * 0.5;
     }
   }
 }
@@ -58,48 +52,46 @@ class ConvergenceScheduler {
       CONFIG.layers.mid.gateDelay,
       CONFIG.layers.fg.gateDelay,
     ];
+    this.centerX = 0;
+    this.centerY = 0;
+    this.maxDist = 1;
+    this.waveDuration = CONFIG.physics.convergeWaveDuration;
   }
 
-  /** 重置计时器 */
   reset() {
     this.elapsed = 0;
   }
 
-  /**
-   * 步进时间
-   * @param {number} dt - 帧时间 (秒)
-   */
+  setCenter(cx, cy, maxD) {
+    this.centerX = cx;
+    this.centerY = cy;
+    this.maxDist = Math.max(maxD, 1);
+  }
+
   advance(dt) {
     this.elapsed += dt;
   }
 
-  /** 获取归一化进度 (0~1) */
   get progress() {
     return Math.min(1, this.elapsed / this.totalDuration);
   }
 
-  /** 是否全部汇聚完成 */
   get isComplete() {
     return this.elapsed >= this.totalDuration;
   }
 
   /**
-   * 判断指定层的门是否开启
-   * @param {number} layerIndex
-   * @returns {boolean}
+   * 判断指定粒子的层门是否开启
    */
   isGateOpen(layerIndex) {
-    const delay = this.gateDelays[layerIndex];
-    // bg 层：散落阶段结束后门开（scatterDuration 之后）
-    // mid/fg 层：前一层门开后 + staggerDelay 后门开
-    const scatterEnd = CONFIG.physics.scatterDuration;
+    const scatterEnd = 1.0; // 短"漂浮"阶段（代替 scatterDuration=0）
+    const staggerDelay = 1.5;
 
     if (layerIndex === 0) {
-      return this.elapsed >= scatterEnd + delay;
+      return this.elapsed >= scatterEnd + this.gateDelays[0];
     }
 
-    const prevDelay = this.gateDelays[layerIndex - 1];
-    const staggerDelay = 1.5;
-    return this.elapsed >= (prevDelay + staggerDelay);
+    const prevOpen = scatterEnd + this.gateDelays[layerIndex - 1];
+    return this.elapsed >= prevOpen + staggerDelay;
   }
 }

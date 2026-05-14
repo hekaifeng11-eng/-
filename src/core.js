@@ -9,19 +9,23 @@
 const P = {
   X: 0,          // 当前 x
   Y: 1,          // 当前 y
-  VX: 2,         // 速度 x
-  VY: 3,         // 速度 y
-  TX: 4,         // 目标 x（图片采样位置）
-  TY: 5,         // 目标 y
-  SX: 6,         // 散落目标 x
-  SY: 7,         // 散落目标 y
-  SIZE: 8,       // 粒子大小
-  R: 9,          // 红色通道
-  G: 10,         // 绿色通道
-  B: 11,         // 蓝色通道
-  LAYER: 12,     // 层索引 (0=bg, 1=mid, 2=fg)
+  Z: 2,          // 当前 z（3D 纵深，新增）
+  VX: 3,         // 速度 x
+  VY: 4,         // 速度 y
+  VZ: 5,         // 速度 z（新增）
+  TX: 6,         // 目标 x
+  TY: 7,         // 目标 y
+  TZ: 8,         // 目标 z（新增）
+  SX: 9,         // 散落目标 x
+  SY: 10,        // 散落目标 y
+  SZ: 11,        // 散落目标 z（新增）
+  SIZE: 12,      // 粒子大小
+  R: 13,         // 红色通道
+  G: 14,         // 绿色通道
+  B: 15,         // 蓝色通道
+  LAYER: 16,     // 层索引 (0=bg, 1=mid, 2=fg)
 };
-const STRIDE = 13;
+const STRIDE = 17;
 
 // ─── 状态机 ───
 const STATE = {
@@ -33,9 +37,9 @@ const STATE = {
 };
 
 const VALID_TRANSITIONS = {
-  [STATE.IDLE]:       [STATE.SCATTERING, STATE.ERROR],
+  [STATE.IDLE]:       [STATE.SCATTERING, STATE.CONVERGING, STATE.ERROR],
   [STATE.SCATTERING]: [STATE.CONVERGING],
-  [STATE.CONVERGING]: [STATE.SETTLED, STATE.SCATTERING],  // 换图时从 CONVERGING 回到 SCATTERING
+  [STATE.CONVERGING]: [STATE.SETTLED, STATE.SCATTERING],
   [STATE.SETTLED]:    [STATE.SCATTERING, STATE.IDLE],
   [STATE.ERROR]:      [STATE.IDLE],
 };
@@ -56,6 +60,7 @@ class ParticleArray {
     let idx = 0;
     const layerKeys = ['bg', 'mid', 'fg'];
     const defaultSample = samples.length > 0 ? samples[samples.length - 1] : ParticleArray.DEFAULT_COLOR;
+    const depthRange = CONFIG.camera ? CONFIG.camera.depthRange : 0;
 
     for (let li = 0; li < 3; li++) {
       const def = layerDefs[layerKeys[li]];
@@ -65,16 +70,19 @@ class ParticleArray {
         const off = idx * STRIDE;
         const sample = idx < samples.length ? samples[idx] : defaultSample;
 
-        // 当前位置 = 质心（散落起点）
-        this.data[off + P.X] = centroidX;
-        this.data[off + P.Y] = centroidY;
+        // 初始位置 = 目标位置（粒子直接从这里开始，不经过爆开）
+        this.data[off + P.X] = sample ? sample.x : centroidX;
+        this.data[off + P.Y] = sample ? sample.y : centroidY;
+        this.data[off + P.Z] = 0;
         this.data[off + P.VX] = 0;
         this.data[off + P.VY] = 0;
+        this.data[off + P.VZ] = 0;
 
-        // 目标位置（图片采样点）
+        // 目标位置（3D：用亮度映射 Z 深度）
         if (sample) {
           this.data[off + P.TX] = sample.x;
           this.data[off + P.TY] = sample.y;
+          this.data[off + P.TZ] = sample.depth || 0;  // brightness→depth
           this.data[off + P.R] = sample.r;
           this.data[off + P.G] = sample.g;
           this.data[off + P.B] = sample.b;
@@ -83,8 +91,8 @@ class ParticleArray {
         // 散落目标（稍后由 ScatterStrategy 填充）
         this.data[off + P.SX] = 0;
         this.data[off + P.SY] = 0;
+        this.data[off + P.SZ] = 0;
 
-        // 大小：在层范围内随机
         const sizeRange = def.maxSize - def.minSize;
         this.data[off + P.SIZE] = def.minSize + Math.random() * sizeRange;
 
@@ -92,14 +100,16 @@ class ParticleArray {
       }
     }
 
-    // 如果样本不足，剩余粒子用最后一个采样位置
+    // 如果样本不足，剩余粒子补位
     for (let i = idx; i < this.n; i++) {
       const off = i * STRIDE;
-      const lastSample = samples[samples.length - 1] || { x: centroidX, y: centroidY, r: 200, g: 150, b: 80 };
-      this.data[off + P.X] = centroidX;
-      this.data[off + P.Y] = centroidY;
+      const lastSample = samples[samples.length - 1] || { x: centroidX, y: centroidY, r: 200, g: 150, b: 80, depth: 0 };
+      this.data[off + P.X] = lastSample.x;
+      this.data[off + P.Y] = lastSample.y;
+      this.data[off + P.Z] = lastSample.depth || 0;
       this.data[off + P.TX] = lastSample.x;
       this.data[off + P.TY] = lastSample.y;
+      this.data[off + P.TZ] = lastSample.depth || 0;
       this.data[off + P.R] = lastSample.r;
       this.data[off + P.G] = lastSample.g;
       this.data[off + P.B] = lastSample.b;

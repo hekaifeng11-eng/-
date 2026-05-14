@@ -9,7 +9,7 @@
 
 class Orchestrator {
   constructor(canvas, statusEl, errorEl, hintEl) {
-    this.renderer = new LayerRenderer(canvas);
+    this.renderer = new WebGLRenderer(canvas);
     this.physics = null;
     this.particles = null;
     this.scheduler = new ConvergenceScheduler();
@@ -86,12 +86,13 @@ class Orchestrator {
       // 散落目标
       ScatterStrategy.scatter(this.particles, result.centroidX, result.centroidY, w, h);
 
-      // 重置调度器
+      // 重置调度器并设汇聚中心
       this.scheduler.reset();
+      this.scheduler.setCenter(result.centroidX, result.centroidY, Math.max(w, h));
 
-      // 先切回 IDLE 再转 SCATTERING（确保状态合法）
+      // 直接进入 CONVERGING（跳过 SCATTERING 爆开阶段）
       this.stateMachine.state = STATE.IDLE;
-      this.stateMachine.transition(STATE.SCATTERING);
+      this.stateMachine.transition(STATE.CONVERGING);
 
       // UI
       this.hintEl.classList.add('hidden');
@@ -143,21 +144,27 @@ class Orchestrator {
     const state = this.stateMachine.state;
 
     // 只在动画态进行物理和渲染
-    if (state === STATE.SCATTERING || state === STATE.CONVERGING || state === STATE.SETTLED) {
+    if (state === STATE.CONVERGING || state === STATE.SETTLED) {
       this.scheduler.advance(realDt);
-      this.physics.step(realDt, this.scheduler.elapsed, (layerIdx) => {
-        return this.scheduler.isGateOpen(layerIdx);
-      });
+
+      // 同步波状汇聚中心到物理系统
+      this.physics.centerX = this.scheduler.centerX;
+      this.physics.centerY = this.scheduler.centerY;
+      this.physics.maxDist = this.scheduler.maxDist;
+
+      // 物理步进（传入 scheduler 而非 isGateOpen 回调）
+      this.physics.step(realDt, this.scheduler.elapsed, this.scheduler);
 
       // 状态转换
-      if (state === STATE.SCATTERING && this.scheduler.elapsed >= CONFIG.physics.scatterDuration) {
-        this.stateMachine.transition(STATE.CONVERGING);
-      }
       if (state === STATE.CONVERGING && this.scheduler.isComplete) {
         this.stateMachine.transition(STATE.SETTLED);
       }
 
-      this.renderer.draw(this.particles);
+      // 更新摄像机角度
+      CONFIG.camera.orbitAngle += realDt * CONFIG.camera.orbitSpeed;
+
+      // 渲染（传摄像机角度）
+      this.renderer.draw(this.particles, CONFIG.camera.orbitAngle);
     }
 
     this.updateStatus(state);
@@ -197,6 +204,7 @@ class Orchestrator {
   const hintEl = document.getElementById('hint');
 
   const orchestrator = new Orchestrator(canvas, statusEl, errorEl, hintEl);
+  window.__orch = orchestrator;  // 调试用
 
   // 点击上传
   uploadZone.addEventListener('click', () => fileInput.click());

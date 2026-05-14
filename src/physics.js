@@ -1,27 +1,8 @@
 /**
- * physics.js — 弹簧-阻尼物理系统
+ * physics.js — 高性能 3D 弹簧-阻尼物理
  *
- * 半隐式欧拉积分：
- *   v += (k * (target - pos) - b * v) * dt
- *   pos += v * dt
- *
- * PhysicsSystem: 按三层不同参数驱动所有粒子
+ * 核心优化：非汇聚态粒子直接冻结（不跑物理），汇聚态全力计算
  */
-
-// ─── 纯函数：单粒子弹簧-阻尼步进 ───
-
-function springDamper(pos, vel, target, k, b, dt) {
-  // guard: 防止负值或 NaN 参数
-  k = (typeof k === 'number' && k >= 0) ? k : 0;
-  b = (typeof b === 'number' && b >= 0) ? b : 0;
-  dt = (typeof dt === 'number' && dt > 0) ? dt : 1/60;
-  const force = (target - pos) * k - b * vel;
-  const newVel = vel + force * dt;
-  const newPos = pos + newVel * dt;
-  return { pos: newPos, vel: newVel };
-}
-
-// ─── PhysicsSystem ───
 
 class PhysicsSystem {
   constructor(particles) {
@@ -29,47 +10,75 @@ class PhysicsSystem {
     this.layerKeys = ['bg', 'mid', 'fg'];
   }
 
-  /**
-   * 步进所有粒子一层
-   * @param {number} dt - 帧时间 (秒)
-   * @param {number} elapsed - 已过时间 (秒)
-   * @param {Function} isGateOpen - (layerIndex) => bool，判断该层门是否开启
-   */
-  step(dt, elapsed, isGateOpen) {
-    dt = Math.min(dt, CONFIG.physics.maxDt);  // 防止 tab 切换后 dt 爆炸
+  step(dt, elapsed, scheduler) {
+    dt = Math.min(dt, CONFIG.physics.maxDt);
     const data = this.particles.data;
     const n = this.particles.n;
+    const spiral = CONFIG.physics.spiralStrength;
+    const defs = [CONFIG.layers.bg, CONFIG.layers.mid, CONFIG.layers.fg];
 
     for (let i = 0; i < n; i++) {
       const off = i * STRIDE;
       const layer = data[off + P.LAYER];
-      const def = CONFIG.layers[this.layerKeys[layer]];
-      const gateOpen = isGateOpen(layer);
+      const def = defs[layer];
+      const gateOpen = scheduler.isGateOpen(layer);
 
-      // 选择目标位置：门开 → 图片目标，门关 → 散落目标
-      const tx = gateOpen ? data[off + P.TX] : data[off + P.SX];
-      const ty = gateOpen ? data[off + P.TY] : data[off + P.SY];
+      // ─── 非汇聚态：冻结在散落位置（零计算） ───
+      if (!gateOpen) {
+        data[off + P.X] = data[off + P.SX];
+        data[off + P.Y] = data[off + P.SY];
+        data[off + P.Z] = data[off + P.SZ];
+        data[off + P.VX] = 0;
+        data[off + P.VY] = 0;
+        data[off + P.VZ] = 0;
+        continue;
+      }
 
-      // 门关时加微漂移噪声（防止粒子冻住）
-      const noise = gateOpen ? 0 : CONFIG.physics.driftNoise;
-      const noiseX = (Math.random() - 0.5) * noise;
-      const noiseY = (Math.random() - 0.5) * noise;
+      const k = def.stiffness;
+      const b = def.damping;
+
+      const tx = data[off + P.TX];
+      const ty = data[off + P.TY];
+      const tz = data[off + P.TZ];
+
+      let px = data[off + P.X];
+      let py = data[off + P.Y];
+      let pz = data[off + P.Z];
+      let vx = data[off + P.VX];
+      let vy = data[off + P.VY];
+      let vz = data[off + P.VZ];
+
+      // 螺旋扰动力（仅汇聚时）
+      const ddx = tx - px;
+      const ddy = ty - py;
+      const approxD = Math.abs(ddx) + Math.abs(ddy);
+      let sx = 0, sy = 0;
+      if (approxD > 4) {
+        const s = spiral * 0.5;
+        sx = ddx > 0 ? -s : s;
+        sy = ddy > 0 ? s : -s;
+      }
 
       // X 轴
-      const xResult = springDamper(
-        data[off + P.X], data[off + P.VX],
-        tx + noiseX, def.stiffness, def.damping, dt
-      );
-      data[off + P.X] = xResult.pos;
-      data[off + P.VX] = xResult.vel;
+      vx += ((tx - px) * k - b * vx) * dt;
+      px += vx * dt + sx * 0.3;
 
-      // Y 轴
-      const yResult = springDamper(
-        data[off + P.Y], data[off + P.VY],
-        ty + noiseY, def.stiffness, def.damping, dt
-      );
-      data[off + P.Y] = yResult.pos;
-      data[off + P.VY] = yResult.vel;
+      // Y 轴（含螺旋）
+      vy += ((ty + sy - py) * k - b * vy) * dt;
+      py += vy * dt;
+
+      // Z 轴（稍低刚度）
+      const zk = k * 0.7;
+      const zb = b * 0.8;
+      vz += ((tz - pz) * zk - zb * vz) * dt;
+      pz += vz * dt;
+
+      data[off + P.X] = px;
+      data[off + P.Y] = py;
+      data[off + P.Z] = pz;
+      data[off + P.VX] = vx;
+      data[off + P.VY] = vy;
+      data[off + P.VZ] = vz;
     }
   }
 }
