@@ -147,12 +147,7 @@ class Orchestrator {
     if (state === STATE.CONVERGING || state === STATE.SETTLED) {
       this.scheduler.advance(realDt);
 
-      // 同步波状汇聚中心到物理系统
-      this.physics.centerX = this.scheduler.centerX;
-      this.physics.centerY = this.scheduler.centerY;
-      this.physics.maxDist = this.scheduler.maxDist;
-
-      // 物理步进（传入 scheduler 而非 isGateOpen 回调）
+      // 物理步进（传入 scheduler 用于门控判断）
       this.physics.step(realDt, this.scheduler.elapsed, this.scheduler);
 
       // 状态转换
@@ -175,7 +170,7 @@ class Orchestrator {
   updateStatus(state) {
     if (!this.statusEl) return;
     const pct = Math.min(100, Math.round(this.scheduler.progress * 100));
-    this.statusEl.innerHTML = `STATE: ${state}<br>${pct}%`;
+    this.statusEl.textContent = `STATE: ${state}\n${pct}%`;
   }
 
   showError(msg) {
@@ -246,7 +241,7 @@ class Orchestrator {
   // D 键切换状态显示
   document.addEventListener('keydown', (e) => {
     if (e.key === 'd' || e.key === 'D') {
-      const cur = statusEl.style.opacity;
+      const cur = window.getComputedStyle(statusEl).opacity;
       statusEl.style.opacity = cur === '1' ? '0' : '1';
     }
   });

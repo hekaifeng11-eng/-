@@ -50,6 +50,7 @@ void main() {
 
     // Z 雾衰减：远=0(雾)，近=1(清晰)
     float fog = smoothstep(focal * 0.3, focal * 1.0, depth);
+    v_depthFade = fog;
 
     // 投影到裁剪空间
     vec2 screenPos = rot.xy * scale + center;

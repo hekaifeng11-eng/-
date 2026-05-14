@@ -64,6 +64,7 @@ const CONFIG = {
 
   // ── 3D 摄像机 ──
   camera: {
+    orbitAngle: 0,            // 摄像机初始角度
     focalLength: 600,         // 焦距，越小透视越强
     orbitSpeed: 0.15,         // 绕 Y 轴旋转速度 (弧度/秒)
     depthRange: 350,          // Z 轴深度范围 (像素)

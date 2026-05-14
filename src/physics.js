@@ -34,8 +34,8 @@ class PhysicsSystem {
         continue;
       }
 
-      const k = def.stiffness;
-      const b = def.damping;
+      const k = Math.max(0, def.stiffness) || 0;
+      const b = Math.max(0, def.damping) || 0;
 
       const tx = data[off + P.TX];
       const ty = data[off + P.TY];

@@ -84,14 +84,9 @@ class ConvergenceScheduler {
    * 判断指定粒子的层门是否开启
    */
   isGateOpen(layerIndex) {
-    const scatterEnd = 1.0; // 短"漂浮"阶段（代替 scatterDuration=0）
-    const staggerDelay = 1.5;
-
-    if (layerIndex === 0) {
-      return this.elapsed >= scatterEnd + this.gateDelays[0];
-    }
-
-    const prevOpen = scatterEnd + this.gateDelays[layerIndex - 1];
-    return this.elapsed >= prevOpen + staggerDelay;
+    // 各层按 gateDelay 依次开门
+    // BG: t >= 1.0, MID: t >= 2.5, FG: t >= 4.0
+    const scatterEnd = 1.0; // 短"漂浮"阶段
+    return this.elapsed >= scatterEnd + this.gateDelays[layerIndex];
   }
 }
