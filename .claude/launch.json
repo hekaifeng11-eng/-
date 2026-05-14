@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "粒子效果",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "D:/粒子效果", "-p", "3000"],
+      "port": 3000
+    }
+  ]
+}
