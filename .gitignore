@@ -1,2 +1,3 @@
 .dispatch-tmp/
 .env
+.claude/worktrees/
