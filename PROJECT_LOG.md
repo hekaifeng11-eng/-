@@ -52,5 +52,6 @@
 - ✅ config.js — 补充参数单位注释
 
 ### 运行状态
+- ✅ 修复 bug: span:last-child 选择器不匹配导致 startLoop 不执行
 - ✅ 开发服务器 localhost:3000 运行正常
 - ✅ 双击 index.html 也可直接打开

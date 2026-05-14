@@ -95,7 +95,7 @@ class Orchestrator {
 
       // UI
       this.hintEl.classList.add('hidden');
-      document.querySelector('#upload-zone span:last-child').textContent = '更换图片';
+      document.getElementById('upload-label').textContent = '更换图片';
 
       // 启动
       this.lastTime = performance.now();
