@@ -63,9 +63,9 @@ class PhysicsSystem {
       vx += ((tx - px) * k - b * vx) * dt;
       px += vx * dt + sx * 0.3;
 
-      // Y 轴（含螺旋）
-      vy += ((ty + sy - py) * k - b * vy) * dt;
-      py += vy * dt;
+      // Y 轴（含螺旋偏转）
+      vy += ((ty - py) * k - b * vy) * dt;
+      py += vy * dt + sy * 0.3;
 
       // Z 轴（稍低刚度）
       const zk = k * 0.7;

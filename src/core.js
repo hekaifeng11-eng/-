@@ -1,7 +1,7 @@
 /**
  * core.js — 粒子数据容器 + 状态机
  *
- * ParticleArray: Float32Array 包装，STRIDE=13 字段布局
+ * ParticleArray: Float32Array 包装，STRIDE=17 字段布局
  * StateMachine: IDLE → SCATTERING → CONVERGING → SETTLED → IDLE
  */
 
@@ -53,8 +53,8 @@ class ParticleArray {
   }
 
   // 批量设置所有粒子的初始状态
-  // 统一默认粒子颜色（暖金色调）
-  static DEFAULT_COLOR = { x: 0, y: 0, r: 200, g: 150, b: 80 };
+  // 默认粒子（使用 depthGradient 按深度取色）
+  static DEFAULT_COLOR = { x: 0, y: 0, depth: 0 };
 
   init(centroidX, centroidY, layerDefs, samples) {
     let idx = 0;
@@ -70,10 +70,10 @@ class ParticleArray {
         const off = idx * STRIDE;
         const sample = idx < samples.length ? samples[idx] : defaultSample;
 
-        // 初始位置 = 目标位置（粒子直接从这里开始，不经过爆开）
+        // 初始位置 = 目标位置（粒子直接从聚合态开始）
         this.data[off + P.X] = sample ? sample.x : centroidX;
         this.data[off + P.Y] = sample ? sample.y : centroidY;
-        this.data[off + P.Z] = 0;
+        this.data[off + P.Z] = sample ? (sample.depth || 0) : 0;
         this.data[off + P.VX] = 0;
         this.data[off + P.VY] = 0;
         this.data[off + P.VZ] = 0;
@@ -83,9 +83,11 @@ class ParticleArray {
           this.data[off + P.TX] = sample.x;
           this.data[off + P.TY] = sample.y;
           this.data[off + P.TZ] = sample.depth || 0;  // brightness→depth
-          this.data[off + P.R] = sample.r;
-          this.data[off + P.G] = sample.g;
-          this.data[off + P.B] = sample.b;
+          // Cool→Warm 深度渐变颜色
+          const depthColor = ColorPalette.depthGradient(sample.depth || 0, CONFIG.camera.depthRange);
+          this.data[off + P.R] = depthColor.r;
+          this.data[off + P.G] = depthColor.g;
+          this.data[off + P.B] = depthColor.b;
         }
 
         // 散落目标（稍后由 ScatterStrategy 填充）
@@ -103,16 +105,18 @@ class ParticleArray {
     // 如果样本不足，剩余粒子补位
     for (let i = idx; i < this.n; i++) {
       const off = i * STRIDE;
-      const lastSample = samples[samples.length - 1] || { x: centroidX, y: centroidY, r: 200, g: 150, b: 80, depth: 0 };
+      const lastSample = samples[samples.length - 1] || { x: centroidX, y: centroidY, depth: 0 };
+      const fallbackDepth = lastSample.depth || 0;
+      const fallbackColor = ColorPalette.depthGradient(fallbackDepth, CONFIG.camera.depthRange);
       this.data[off + P.X] = lastSample.x;
       this.data[off + P.Y] = lastSample.y;
-      this.data[off + P.Z] = lastSample.depth || 0;
+      this.data[off + P.Z] = fallbackDepth;
       this.data[off + P.TX] = lastSample.x;
       this.data[off + P.TY] = lastSample.y;
-      this.data[off + P.TZ] = lastSample.depth || 0;
-      this.data[off + P.R] = lastSample.r;
-      this.data[off + P.G] = lastSample.g;
-      this.data[off + P.B] = lastSample.b;
+      this.data[off + P.TZ] = fallbackDepth;
+      this.data[off + P.R] = fallbackColor.r;
+      this.data[off + P.G] = fallbackColor.g;
+      this.data[off + P.B] = fallbackColor.b;
       this.data[off + P.SIZE] = 2;
       this.data[off + P.LAYER] = 0;
     }

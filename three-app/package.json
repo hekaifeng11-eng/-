@@ -1,0 +1,18 @@
+{
+  "name": "particle-engine",
+  "version": "0.1.0",
+  "description": "3D Particle Engine — Three.js + GPGPU FBO",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "gsap": "^3.15.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.13"
+  }
+}

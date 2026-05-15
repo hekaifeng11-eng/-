@@ -83,15 +83,11 @@ class Orchestrator {
       // 物理系统
       this.physics = new PhysicsSystem(this.particles);
 
-      // 散落目标
-      ScatterStrategy.scatter(this.particles, result.centroidX, result.centroidY, w, h);
-
       // 重置调度器并设汇聚中心
       this.scheduler.reset();
       this.scheduler.setCenter(result.centroidX, result.centroidY, Math.max(w, h));
 
-      // 直接进入 CONVERGING（跳过 SCATTERING 爆开阶段）
-      this.stateMachine.state = STATE.IDLE;
+      // 直接进入 CONVERGING（静态聚合态，无开场散落）
       this.stateMachine.transition(STATE.CONVERGING);
 
       // UI
@@ -143,22 +139,11 @@ class Orchestrator {
 
     const state = this.stateMachine.state;
 
-    // 只在动画态进行物理和渲染
     if (state === STATE.CONVERGING || state === STATE.SETTLED) {
-      this.scheduler.advance(realDt);
-
-      // 物理步进（传入 scheduler 用于门控判断）
-      this.physics.step(realDt, this.scheduler.elapsed, this.scheduler);
-
-      // 状态转换
-      if (state === STATE.CONVERGING && this.scheduler.isComplete) {
-        this.stateMachine.transition(STATE.SETTLED);
-      }
-
       // 更新摄像机角度
       CONFIG.camera.orbitAngle += realDt * CONFIG.camera.orbitSpeed;
 
-      // 渲染（传摄像机角度）
+      // 渲染
       this.renderer.draw(this.particles, CONFIG.camera.orbitAngle);
     }
 

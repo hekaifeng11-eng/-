@@ -6,6 +6,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "D:/粒子效果", "-p", "3000"],
       "port": 3000
+    },
+    {
+      "name": "粒子引擎 (Three.js)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite"],
+      "cwd": "D:/粒子效果/three-app",
+      "port": 3001
     }
   ]
 }

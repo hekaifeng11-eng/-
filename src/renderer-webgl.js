@@ -1,9 +1,7 @@
 /**
  * renderer-webgl.js — WebGL 3D 点精灵渲染器
  *
- * 支持：3D 透视投影、绕 Y 轴旋转、径向辉光、Z 雾
  */
-
 // ─── 顶点着色器 ───
 
 const VS_SRC = `
@@ -16,7 +14,6 @@ uniform float u_angle;
 uniform float u_focalLength;
 
 varying vec3 v_color;
-varying float v_depthFade;
 
 void main() {
     v_color = a_color / 255.0;
@@ -42,15 +39,10 @@ void main() {
     if (depth <= 1.0) {
         gl_Position = vec4(0.0, 0.0, -1.0, 0.0);
         gl_PointSize = 0.0;
-        v_depthFade = 0.0;
         return;
     }
 
     float scale = focal / depth;
-
-    // Z 雾衰减：远=0(雾)，近=1(清晰)
-    float fog = smoothstep(focal * 0.3, focal * 1.0, depth);
-    v_depthFade = fog;
 
     // 投影到裁剪空间
     vec2 screenPos = rot.xy * scale + center;
@@ -67,7 +59,6 @@ void main() {
 const FS_SRC = `
 precision mediump float;
 varying vec3 v_color;
-varying float v_depthFade;
 
 uniform float u_alpha;
 uniform float u_glowIntensity;
@@ -86,12 +77,7 @@ void main() {
     // 中心暖色增强
     vec3 color = v_color * (1.0 + glow * 0.5);
 
-    // Z 雾
-    float fog = v_depthFade;
-    alpha = (alpha + glow) * u_alpha * fog;
-    color *= fog;
-
-    gl_FragColor = vec4(color, alpha);
+    gl_FragColor = vec4(color, (alpha + glow) * u_alpha);
 }
 `;
 

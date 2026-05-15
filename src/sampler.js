@@ -24,6 +24,23 @@ const ColorPalette = {
       b: Math.min(255, Math.max(0, Math.round(b * cfg.warmB))),
     };
   },
+
+  /**
+   * Cool→Warm 深度渐变：近=暖橙金，远=冷蓝紫
+   * @param {number} depth - Z 深度值
+   * @param {number} depthRange - 深度范围
+   * @returns {{r, g, b}}
+   */
+  depthGradient(depth, depthRange) {
+    const t = Math.max(-1, Math.min(1, depth / depthRange));
+    const blend = (t + 1) / 2;
+    // Warm gold: rgb(255, 200, 80)  →  Cool blue: rgb(60, 120, 255)
+    return {
+      r: Math.round(255 * (1 - blend) + 60 * blend),
+      g: Math.round(200 * (1 - blend) + 120 * blend),
+      b: Math.round(80 * (1 - blend) + 255 * blend),
+    };
+  },
 };
 
 // ─── ImageLoader ───

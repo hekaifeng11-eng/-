@@ -12,7 +12,7 @@ const CONFIG = {
 
   // ── 粒子 ──
   particles: {
-    maxCount: 400000,         // 粒子总数上限
+    maxCount: 500000,         // 粒子总数上限
     minImageDim: 100,         // 最短边最小值 (px)
     maxImageDim: 1200,        // 采样缩放宽度 (px)
     defaultStep: 1,           // 采样步长
@@ -24,25 +24,25 @@ const CONFIG = {
     bg: {
       count: 200000,
       minSize: 1,
-      maxSize: 2,
+      maxSize: 1.5,
       stiffness: 0.10,
       damping: 0.55,
       noiseAmp: 0.3,
       gateDelay: 0,
     },
     mid: {
-      count: 140000,
-      minSize: 2,
-      maxSize: 5,
+      count: 200000,
+      minSize: 1.5,
+      maxSize: 3,
       stiffness: 0.08,
       damping: 0.40,
       noiseAmp: 0.8,
       gateDelay: 1.5,
     },
     fg: {
-      count: 60000,
-      minSize: 6,
-      maxSize: 18,
+      count: 100000,
+      minSize: 3,
+      maxSize: 8,
       stiffness: 0.05,
       damping: 0.25,
       noiseAmp: 2.0,
@@ -65,12 +65,10 @@ const CONFIG = {
   // ── 3D 摄像机 ──
   camera: {
     orbitAngle: 0,            // 摄像机初始角度
-    focalLength: 600,         // 焦距，越小透视越强
-    orbitSpeed: 0.15,         // 绕 Y 轴旋转速度 (弧度/秒)
+    focalLength: 400,         // 焦距，越小透视越强
+    orbitSpeed: 0.30,         // 绕 Y 轴旋转速度 (弧度/秒)
     depthRange: 350,          // Z 轴深度范围 (像素)
-    fogNear: 400,             // Z 雾起始距离
-    fogFar: 900,              // Z 雾完全遮盖
-    glowIntensity: 0.4,       // 辉光强度
+    glowIntensity: 0.6,       // 辉光强度
   },
 
   // ── 颜色 ──
