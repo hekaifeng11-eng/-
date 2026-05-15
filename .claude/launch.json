@@ -1,18 +1,11 @@
 {
-  "version": "0.0.1",
+  "version": "0.0.2",
   "configurations": [
     {
-      "name": "粒子效果",
+      "name": "粒子引擎",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "D:/粒子效果", "-p", "3000"],
+      "runtimeArgs": ["vite", "--port", "3000", "--open"],
       "port": 3000
-    },
-    {
-      "name": "粒子引擎 (Three.js)",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite"],
-      "cwd": "D:/粒子效果/three-app",
-      "port": 3001
     }
   ]
 }

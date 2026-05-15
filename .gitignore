@@ -1,5 +1,5 @@
-.dispatch-tmp/
+node_modules/
+dist/
+.vite/
 .env
 .claude/worktrees/
-three-app/node_modules/
-three-app/.vite/

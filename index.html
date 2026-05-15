@@ -3,136 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>粒子汇聚效果</title>
+  <title>粒子引擎 — 3D模型转粒子</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #0a0a0f;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    /* ── 上传控件 ── */
-    #upload-zone {
-      position: fixed;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 24px;
-      background: rgba(255,255,255,0.06);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 12px;
-      color: rgba(255,255,255,0.6);
-      font-size: 13px;
-      cursor: pointer;
-      transition: all 0.3s;
-      user-select: none;
-    }
-    #upload-zone:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.25);
-      color: rgba(255,255,255,0.9);
-    }
-    #upload-zone.dragover {
-      background: rgba(255,255,255,0.15);
-      border-color: rgba(255,200,100,0.5);
-      color: rgba(255,200,100,0.9);
-    }
-    #upload-zone input[type="file"] {
-      display: none;
-    }
-    #upload-zone .icon {
-      font-size: 18px;
-    }
-
-    /* ── 提示文字 ── */
-    #hint {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 5;
-      color: rgba(255,255,255,0.15);
-      font-size: 14px;
-      letter-spacing: 0.5px;
-      text-align: center;
-      pointer-events: none;
-      transition: opacity 0.8s;
-    }
-    #hint.hidden { opacity: 0; }
-
-    /* ── 状态指示 ── */
-    #status {
-      position: fixed;
-      top: 20px;
-      right: 24px;
-      z-index: 10;
-      color: rgba(255,255,255,0.3);
-      font-size: 12px;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      text-align: right;
-      line-height: 1.6;
-      pointer-events: none;
-      transition: opacity 0.5s;
-      white-space: pre-line;
-    }
-
-    /* ── 错误提示 ── */
-    #error-toast {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) scale(0.9);
-      z-index: 20;
-      padding: 16px 28px;
-      background: rgba(255,60,60,0.12);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,60,60,0.25);
-      border-radius: 10px;
-      color: #ff6b6b;
-      font-size: 14px;
-      opacity: 0;
-      pointer-events: none;
-      transition: all 0.3s;
-      text-align: center;
-    }
-    #error-toast.show {
-      opacity: 1;
-      transform: translate(-50%, -50%) scale(1);
-    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-
-  <div id="hint">拖拽图片到此处 · 或点击下方上传</div>
-  <div id="status"></div>
-  <div id="error-toast"></div>
-
-  <div id="upload-zone">
-    <span class="icon">☀</span>
-    <span id="upload-label">选择图片</span>
-    <input type="file" id="file-input" accept="image/*">
-  </div>
-
-  <script src="src/config.js"></script>
-  <script src="src/core.js"></script>
-  <script src="src/physics.js"></script>
-  <script src="src/sampler.js"></script>
-  <script src="src/renderer-webgl.js"></script>
-  <script src="src/controller.js"></script>
-  <script src="src/app.js"></script>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
