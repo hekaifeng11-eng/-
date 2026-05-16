@@ -3,7 +3,6 @@ import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer
 import { computePositionFrag, computeVelocityFrag } from './shaders/compute.glsl.js';
 import { renderVertex, renderFragment } from './shaders/render.glsl.js';
 
-const SIZE_MULTIPLIER = 2;
 const SCATTER_RADIUS = 800;
 
 function randomInSphere(radius) {
@@ -34,7 +33,7 @@ export class ParticleSystem {
     this.count = count;
 
     const texSize = Math.ceil(Math.sqrt(count));
-    const w = nextPowerOf2(texSize * SIZE_MULTIPLIER);
+    const w = nextPowerOf2(texSize);
     const h = nextPowerOf2(texSize);
     this.texWidth = w;
     this.texHeight = h;
@@ -50,6 +49,8 @@ export class ParticleSystem {
       targetData[i * 4 + 3] = 1.0;
     }
     this.targetTexture = new THREE.DataTexture(targetData, w, h, THREE.RGBAFormat, THREE.FloatType);
+    this.targetTexture.minFilter = THREE.NearestFilter;
+    this.targetTexture.magFilter = THREE.NearestFilter;
     this.targetTexture.needsUpdate = true;
 
     const scatterData = new Float32Array(w * h * 4);
@@ -61,10 +62,18 @@ export class ParticleSystem {
       scatterData[i * 4 + 3] = 1.0;
     }
     this.scatterTexture = new THREE.DataTexture(scatterData, w, h, THREE.RGBAFormat, THREE.FloatType);
+    this.scatterTexture.minFilter = THREE.NearestFilter;
+    this.scatterTexture.magFilter = THREE.NearestFilter;
     this.scatterTexture.needsUpdate = true;
 
     const posData = new Float32Array(w * h * 4);
-    posData.set(targetData);
+    for (let i = 0; i < count; i++) {
+      const [sx, sy, sz] = randomInSphere(SCATTER_RADIUS);
+      posData[i * 4]     = sx;
+      posData[i * 4 + 1] = sy;
+      posData[i * 4 + 2] = sz;
+      posData[i * 4 + 3] = 0.5 + Math.random() * 1.5;
+    }
     this.positionTexture = this.gpuCompute.createTexture();
     this.positionTexture.image.data.set(posData);
 
@@ -75,15 +84,14 @@ export class ParticleSystem {
     this.posVar = this.gpuCompute.addVariable('positionTexture', computePositionFrag, this.positionTexture);
     this.velVar = this.gpuCompute.addVariable('velocityTexture', computeVelocityFrag, this.velocityTexture);
 
-    this.gpuCompute.setVariableDependencies(this.posVar, [this.velVar]);
-    this.gpuCompute.setVariableDependencies(this.velVar, [this.posVar]);
+    this.gpuCompute.setVariableDependencies(this.posVar, [this.posVar, this.velVar]);
+    this.gpuCompute.setVariableDependencies(this.velVar, [this.velVar, this.posVar]);
 
     const pu = this.posVar.material.uniforms;
-    pu.positionTexture = { value: null };
     pu.u_dt           = { value: 0.016 };
+    pu.u_life         = { value: 0.0 };
 
     const vu = this.velVar.material.uniforms;
-    vu.velocityTexture = { value: null };
     vu.u_dt           = { value: 0.016 };
     vu.u_damping      = { value: 0.96 };
     vu.u_springK      = { value: 0.15 };
@@ -91,8 +99,12 @@ export class ParticleSystem {
     vu.u_state        = { value: 0.0 };
     vu.u_time         = { value: 0 };
     vu.u_maxVel       = { value: 50.0 };
-    vu.targetTexture  = { value: this.targetTexture };
-    vu.scatterTexture = { value: this.scatterTexture };
+    vu.u_vortexStrength = { value: 0.0 };
+    vu.u_vortexCenter   = { value: new THREE.Vector3(0, 0, 0) };
+    vu.u_mousePos       = { value: new THREE.Vector3(0, 0, 0) };
+    vu.u_mouseStrength  = { value: 0.0 };
+    vu.targetTexture    = { value: this.targetTexture };
+    vu.scatterTexture   = { value: this.scatterTexture };
 
     this.gpuCompute.init();
 
@@ -121,18 +133,22 @@ export class ParticleSystem {
     geometry.setAttribute('a_color', new THREE.BufferAttribute(colorArray, 3));
 
     const circleSize = 64;
-    const circleData = new Uint8Array(circleSize * circleSize);
+    const circleDataRGBA = new Uint8Array(circleSize * circleSize * 4);
     for (let y = 0; y < circleSize; y++) {
       for (let x = 0; x < circleSize; x++) {
         const dx = (x + 0.5) / circleSize - 0.5;
         const dy = (y + 0.5) / circleSize - 0.5;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        circleData[y * circleSize + x] = Math.max(0, Math.min(255,
-          Math.round((1.0 - dist * 2.0) * 255)));
+        const val = Math.max(0, Math.min(255, Math.round((1.0 - dist * 2.0) * 255)));
+        const idx = (y * circleSize + x) * 4;
+        circleDataRGBA[idx]     = val;
+        circleDataRGBA[idx + 1] = val;
+        circleDataRGBA[idx + 2] = val;
+        circleDataRGBA[idx + 3] = 255;
       }
     }
-    const circleTexture = new THREE.DataTexture(circleData, circleSize, circleSize,
-      THREE.RedFormat, THREE.UnsignedByteType);
+    const circleTexture = new THREE.DataTexture(circleDataRGBA, circleSize, circleSize,
+      THREE.RGBAFormat, THREE.UnsignedByteType);
     circleTexture.needsUpdate = true;
 
     this.renderMat = new THREE.ShaderMaterial({
@@ -140,8 +156,13 @@ export class ParticleSystem {
       fragmentShader: renderFragment,
       uniforms: {
         u_positionTexture: { value: null },
+        u_velocityTexture: { value: null },
         u_pointSize:       { value: 4.0 },
         u_opacity:         { value: 0.85 },
+        u_stretch:         { value: 1.0 },
+        u_visibleCount:    { value: 0.0 },
+        u_texWidth:        { value: w },
+        u_texHeight:       { value: h },
         u_circleTexture:   { value: circleTexture },
       },
       transparent: true,
@@ -160,15 +181,13 @@ export class ParticleSystem {
     vu.u_dt.value = dt;
     vu.u_time.value = time;
 
-    pu.positionTexture.value =
-      this.gpuCompute.getCurrentRenderTarget(this.posVar).texture;
-    vu.velocityTexture.value =
-      this.gpuCompute.getCurrentRenderTarget(this.velVar).texture;
-
     this.gpuCompute.compute();
 
-    this.renderMat.uniforms.u_positionTexture.value =
-      this.gpuCompute.getCurrentRenderTarget(this.posVar).texture;
+    const posTex = this.gpuCompute.getCurrentRenderTarget(this.posVar).texture;
+    const velTex = this.gpuCompute.getCurrentRenderTarget(this.velVar).texture;
+
+    this.renderMat.uniforms.u_positionTexture.value = posTex;
+    this.renderMat.uniforms.u_velocityTexture.value = velTex;
   }
 
   setUniform(name, value) {
@@ -192,6 +211,7 @@ export class ParticleSystem {
 
   dispose() {
     this.points.geometry.dispose();
+    this.renderMat.uniforms.u_circleTexture.value.dispose();
     this.renderMat.dispose();
     this.targetTexture.dispose();
     this.scatterTexture.dispose();

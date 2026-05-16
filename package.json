@@ -1,7 +1,7 @@
 {
   "name": "particle-engine",
-  "version": "0.2.0",
-  "description": "3D Model → Particle Engine — Three.js + GPGPU FBO",
+  "version": "0.7.0",
+  "description": "3D Model → Particle Engine v7 — Three.js + GPGPU FBO + Bloom + Vortex",
   "type": "module",
   "scripts": {
     "dev": "vite",

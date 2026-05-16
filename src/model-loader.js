@@ -1,11 +1,53 @@
+import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 const MAX_PARTICLES = 500000;
 
-function mergeGeometries(geometries) {
+let _sampleCanvas = null;
+let _sampleCtx = null;
+let _currentImageSrc = null;
+
+function sampleTextureColor(material, uvx, uvy) {
+  if (!material || !material.map || !material.map.image) return null;
+  const img = material.map.image;
+  try {
+    if (!_sampleCanvas) {
+      _sampleCanvas = document.createElement('canvas');
+      _sampleCtx = _sampleCanvas.getContext('2d');
+    }
+    if (_currentImageSrc !== img.src) {
+      _sampleCanvas.width = img.width || img.videoWidth || 1;
+      _sampleCanvas.height = img.height || img.videoHeight || 1;
+      _sampleCtx.drawImage(img, 0, 0);
+      _currentImageSrc = img.src;
+    }
+    const px = Math.floor(uvx * (_sampleCanvas.width - 1));
+    const py = Math.floor((1 - uvy) * (_sampleCanvas.height - 1));
+    const data = _sampleCtx.getImageData(Math.max(0, px), Math.max(0, py), 1, 1).data;
+    return [data[0] / 255, data[1] / 255, data[2] / 255];
+  } catch {
+    return null;
+  }
+}
+
+function disposeScene(object) {
+  object.traverse(child => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(m => {
+        if (m.map) m.map.dispose();
+        m.dispose();
+      });
+    }
+  });
+}
+
+function mergeGeometries(geometries, meshes) {
   let totalVerts = 0;
   const hasColor = geometries.some(g => g.attributes.color);
+  const hasUV = geometries.some(g => g.attributes.uv);
 
   for (const g of geometries) totalVerts += g.attributes.position.count;
 
@@ -20,7 +62,7 @@ function mergeGeometries(geometries) {
 
   const count = indices.length;
   const pos = new Float32Array(count * 3);
-  const col = hasColor ? new Float32Array(count * 3) : null;
+  const col = (hasColor || hasUV) ? new Float32Array(count * 3) : null;
 
   const offsets = [];
   let acc = 0;
@@ -30,6 +72,8 @@ function mergeGeometries(geometries) {
   }
 
   const needsJitter = totalVerts < MAX_PARTICLES;
+  const textureColorCache = new Map();
+  const tempVec = new THREE.Vector3();
 
   for (let i = 0; i < count; i++) {
     const idx = indices[i];
@@ -39,9 +83,18 @@ function mergeGeometries(geometries) {
     const g = geometries[geoIdx];
     const pAttr = g.attributes.position;
 
-    pos[i * 3]     = pAttr.array[localIdx * 3];
-    pos[i * 3 + 1] = pAttr.array[localIdx * 3 + 1];
-    pos[i * 3 + 2] = pAttr.array[localIdx * 3 + 2];
+    if (meshes && meshes[geoIdx]) {
+      const mesh = meshes[geoIdx];
+      mesh.updateWorldMatrix(true, false);
+      tempVec.fromBufferAttribute(pAttr, localIdx).applyMatrix4(mesh.matrixWorld);
+      pos[i * 3]     = tempVec.x;
+      pos[i * 3 + 1] = tempVec.y;
+      pos[i * 3 + 2] = tempVec.z;
+    } else {
+      pos[i * 3]     = pAttr.array[localIdx * 3];
+      pos[i * 3 + 1] = pAttr.array[localIdx * 3 + 1];
+      pos[i * 3 + 2] = pAttr.array[localIdx * 3 + 2];
+    }
 
     if (needsJitter) {
       pos[i * 3]     += (Math.random() - 0.5) * 2.0;
@@ -50,12 +103,48 @@ function mergeGeometries(geometries) {
     }
 
     if (col) {
+      let colorSet = false;
+
       const cAttr = g.attributes.color;
       if (cAttr) {
         col[i * 3]     = cAttr.array[localIdx * 3];
         col[i * 3 + 1] = cAttr.array[localIdx * 3 + 1];
         col[i * 3 + 2] = cAttr.array[localIdx * 3 + 2];
-      } else {
+        colorSet = true;
+      }
+
+      if (!colorSet && meshes && meshes[geoIdx] && g.attributes.uv) {
+        const mesh = meshes[geoIdx];
+        const uvAttr = g.attributes.uv;
+        const uvx = uvAttr.array[localIdx * 2];
+        const uvy = uvAttr.array[localIdx * 2 + 1];
+
+        const mat = mesh.material;
+        if (mat) {
+          const materials = Array.isArray(mat) ? mat : [mat];
+          for (const m of materials) {
+            if (m.map && m.map.image) {
+              const cacheKey = `${geoIdx}_${Math.round(uvx * 100)}_${Math.round(uvy * 100)}`;
+              let sampled;
+              if (textureColorCache.has(cacheKey)) {
+                sampled = textureColorCache.get(cacheKey);
+              } else {
+                sampled = sampleTextureColor(m, uvx, uvy);
+                if (sampled) textureColorCache.set(cacheKey, sampled);
+              }
+              if (sampled) {
+                col[i * 3]     = sampled[0];
+                col[i * 3 + 1] = sampled[1];
+                col[i * 3 + 2] = sampled[2];
+                colorSet = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (!colorSet) {
         col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0.7;
       }
     }
@@ -87,15 +176,17 @@ function fillSample(total, n) {
 
 function collectGeometries(object) {
   const geos = [];
+  const meshes = [];
   object.traverse(child => {
     if (child.isMesh && child.geometry) {
       const g = child.geometry;
       if (g.attributes.position && g.attributes.position.count > 0) {
         geos.push(g);
+        meshes.push(child);
       }
     }
   });
-  return geos;
+  return { geos, meshes };
 }
 
 export function normalizeModel(positions) {
@@ -142,10 +233,11 @@ export class ModelLoader {
           url,
           gltf => {
             try {
-              const geos = collectGeometries(gltf.scene);
+              const { geos, meshes } = collectGeometries(gltf.scene);
               if (geos.length === 0) return reject(new Error('No meshes found in GLB'));
-              const data = mergeGeometries(geos);
+              const data = mergeGeometries(geos, meshes);
               normalizeModel(data.attributes.position);
+              disposeScene(gltf.scene);
               resolve(data);
             } catch (e) {
               reject(e);
@@ -171,10 +263,11 @@ export class ModelLoader {
             '',
             gltf => {
               try {
-                const geos = collectGeometries(gltf.scene);
+                const { geos, meshes } = collectGeometries(gltf.scene);
                 if (geos.length === 0) return reject(new Error('No meshes found in GLB'));
-                const data = mergeGeometries(geos);
+                const data = mergeGeometries(geos, meshes);
                 normalizeModel(data.attributes.position);
+                disposeScene(gltf.scene);
                 resolve(data);
               } catch (e) {
                 reject(e);
@@ -199,10 +292,11 @@ export class ModelLoader {
           url,
           group => {
             try {
-              const geos = collectGeometries(group);
+              const { geos, meshes } = collectGeometries(group);
               if (geos.length === 0) return reject(new Error('No meshes found in FBX'));
-              const data = mergeGeometries(geos);
+              const data = mergeGeometries(geos, meshes);
               normalizeModel(data.attributes.position);
+              disposeScene(group);
               resolve(data);
             } catch (e) {
               reject(e);
@@ -224,10 +318,11 @@ export class ModelLoader {
         try {
           const loader = new FBXLoader();
           const group = loader.parse(reader.result, '');
-          const geos = collectGeometries(group);
+          const { geos, meshes } = collectGeometries(group);
           if (geos.length === 0) return reject(new Error('No meshes found in FBX'));
-          const data = mergeGeometries(geos);
+          const data = mergeGeometries(geos, meshes);
           normalizeModel(data.attributes.position);
+          disposeScene(group);
           resolve(data);
         } catch (e) {
           reject(e);
