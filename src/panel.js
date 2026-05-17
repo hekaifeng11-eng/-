@@ -1,9 +1,17 @@
 import GUI from 'lil-gui';
 import { appState } from './state.js';
 import { THEMES } from './param-mapper.js';
+import { TRANSITION_MODES } from './animation-sequencer.js';
+
+function descDiv(text) {
+  const el = document.createElement('div');
+  el.style.cssText = 'color:rgba(255,255,255,0.35);font:9px monospace;padding:2px 0 6px 0;';
+  el.textContent = text;
+  return el;
+}
 
 export function setupPanel(particleRef, camera, camState, postProcessing, sequencer, setTheme = null) {
-  const gui = new GUI({ title: '粒子引擎 v9', width: 280 });
+  const gui = new GUI({ title: '粒子引擎 v10', width: 300 });
 
   if (setTheme) {
     const tf = gui.addFolder('主题风格');
@@ -33,7 +41,35 @@ export function setupPanel(particleRef, camera, camState, postProcessing, sequen
     .name('散射/汇聚');
   df.open();
 
-  const sf = gui.addFolder('阶段');
+  // 过渡模式 + 描述
+  const modeFolder = gui.addFolder('过渡模式');
+  const modeNames = TRANSITION_MODES.reduce((acc, m) => {
+    acc[`${m.label}  ·  ${m.name}`] = m.id;
+    return acc;
+  }, {});
+  const modeObj = { mode: `${TRANSITION_MODES[0].label}  ·  ${TRANSITION_MODES[0].name}` };
+
+  let descEl = null;
+  modeFolder.add(modeObj, 'mode', modeNames)
+    .name('效果')
+    .onChange(v => {
+      const m = TRANSITION_MODES.find(t => t.id === v);
+      sequencer.setMode(v);
+      if (descEl) descEl.textContent = m ? m.desc : '';
+    });
+
+  // 添加描述文字
+  const m0 = TRANSITION_MODES[0];
+  descEl = descDiv(m0.desc);
+  modeFolder.domElement.appendChild(descEl);
+
+  modeFolder.add({ get v() { return sequencer.speed; }, set v(val) { sequencer.speed = val; } }, 'v', 0.25, 3.0, 0.05)
+    .name('过渡速度');
+  modeFolder.add({ get v() { return sequencer._autoCycle; }, set v(val) { sequencer._autoCycle = val; } }, 'v')
+    .name('自动轮换');
+  modeFolder.open();
+
+  const sf = gui.addFolder('阶段触发');
   sf.add({ scatter() { sequencer.setStage('scatter'); } }, 'scatter').name('散射');
   sf.add({ converge() { sequencer.setStage('converge'); } }, 'converge').name('汇聚');
   sf.add({ display() { sequencer.setStage('display'); } }, 'display').name('展示');

@@ -106,6 +106,26 @@ export class ParticleSystem {
       THREE.RGBAFormat, THREE.UnsignedByteType);
     circleTexture.needsUpdate = true;
 
+    // 计算模型包围盒
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < count && i * 3 < targetPositions.length; i++) {
+      const x = targetPositions[i * 3];
+      const y = targetPositions[i * 3 + 1];
+      const z = targetPositions[i * 3 + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const modelCenter = new THREE.Vector3(
+      (minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5
+    );
+    const modelRadius = Math.max(
+      (maxX - minX) * 0.5, (maxY - minY) * 0.5, (maxZ - minZ) * 0.5
+    );
+
+    console.log(`[ParticleSystem] 模型包围盒: center=(${modelCenter.x.toFixed(0)},${modelCenter.y.toFixed(0)},${modelCenter.z.toFixed(0)}), radius=${modelRadius.toFixed(0)}, Y范围=[${minY.toFixed(0)},${maxY.toFixed(0)}]`);
+
     // 渲染材质
     this.renderMat = new THREE.ShaderMaterial({
       vertexShader: renderVertex,
@@ -124,6 +144,11 @@ export class ParticleSystem {
         u_circleTexture:{ value: circleTexture },
         u_noiseStrength:{ value: 0.3 },
         u_noiseSpeed:   { value: 0.15 },
+        u_transitionMode: { value: 0.0 },
+        u_modelCenter:  { value: modelCenter },
+        u_modelRadius:  { value: modelRadius },
+        u_modelMinY:    { value: minY },
+        u_modelMaxY:    { value: maxY },
       },
       transparent: true,
       depthWrite: false,

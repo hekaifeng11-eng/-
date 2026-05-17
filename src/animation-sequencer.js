@@ -1,12 +1,14 @@
 import { gsap } from 'gsap';
 
-const STAGES = {
-  SCATTER: 0,
-  CONVERGE: 1,
-  DISPLAY: 2,
-  VORTEX: 3,
-  BURST: 4,
-};
+const TRANSITION_MODES = [
+  { id: 0, name: 'Uniform', label: '统一', desc: '所有粒子同步移动' },
+  { id: 1, name: 'Wave', label: '波浪', desc: '底部→顶部波浪式推进' },
+  { id: 2, name: 'Implode', label: '塌缩', desc: '外围→中心引力塌缩' },
+  { id: 3, name: 'Radiate', label: '辐射', desc: '核心→外围光芒放射' },
+  { id: 4, name: 'Spiral', label: '螺旋', desc: '绕Y轴旋转飞入轨道' },
+  { id: 5, name: 'Glitch', label: '闪烁', desc: '随机顺序+噪波脉冲' },
+  { id: 6, name: 'Shatter', label: '碎裂', desc: '6簇碎片分组爆裂重组' },
+];
 
 export class AnimationSequencer {
   constructor(particleRef, camState) {
@@ -14,7 +16,9 @@ export class AnimationSequencer {
     this.camState = camState;
     this.masterTL = null;
     this.activeTweens = [];
-    this.stage = STAGES.SCATTER;
+    this.currentMode = 0;
+    this._autoCycle = true;
+    this.speed = 1.0; // 0.25 ~ 3.0, 1.0 = default
   }
 
   kill() {
@@ -26,12 +30,32 @@ export class AnimationSequencer {
     this.activeTweens = [];
   }
 
+  setMode(mode) {
+    this.currentMode = Math.max(0, Math.min(6, mode));
+    const ps = this.particleRef.current;
+    if (ps) ps.setUniform('u_transitionMode', parseFloat(this.currentMode));
+  }
+
+  nextMode() {
+    this.setMode((this.currentMode + 1) % 7);
+  }
+
+  _td(t) { return t / Math.max(0.25, this.speed); }
+
   playFullSequence() {
     this.kill();
     const ps = this.particleRef.current;
     if (!ps) return;
 
-    this.masterTL = gsap.timeline({ repeat: -1 });
+    ps.setUniform('u_transitionMode', parseFloat(this.currentMode));
+
+    this.masterTL = gsap.timeline({
+      repeat: -1,
+      onRepeat: () => {
+        if (this._autoCycle) this.nextMode();
+        ps.setUniform('u_transitionMode', parseFloat(this.currentMode));
+      },
+    });
 
     this.masterTL.add(this._stageScatter(ps));
     this.masterTL.add(this._stageConverge(ps));
@@ -42,16 +66,18 @@ export class AnimationSequencer {
 
   _stageScatter(ps) {
     const tl = gsap.timeline();
-    tl.to(ps, {
-      duration: 0.01,
+    const stateObj = { value: 0.0 };
+    tl.to(stateObj, {
+      value: 1.0,
+      duration: this._td(3.0),
+      ease: 'power2.out',
       onStart: () => {
-        this.stage = STAGES.SCATTER;
-        ps.setUniform('u_state', 1.0);
         ps.setUniform('u_noiseStrength', 0.8);
         ps.setUniform('u_noiseSpeed', 0.2);
       },
+      onUpdate: () => ps.setUniform('u_state', stateObj.value),
     });
-    tl.to({}, { duration: 2.0 });
+    tl.to({}, { duration: this._td(1.0) });
     return tl;
   }
 
@@ -59,18 +85,16 @@ export class AnimationSequencer {
     const tl = gsap.timeline();
     const stateObj = { value: 1.0 };
     const noiseObj = { strength: 0.8 };
+    const dur = this._td(6.0);
     tl.to(stateObj, {
       value: 0.0,
-      duration: 4.0,
+      duration: dur,
       ease: 'power2.inOut',
-      onStart: () => {
-        this.stage = STAGES.CONVERGE;
-      },
       onUpdate: () => ps.setUniform('u_state', stateObj.value),
     });
     tl.to(noiseObj, {
       strength: 0.15,
-      duration: 4.0,
+      duration: dur,
       ease: 'power2.inOut',
       onUpdate: () => ps.setUniform('u_noiseStrength', noiseObj.strength),
     }, '<');
@@ -82,13 +106,12 @@ export class AnimationSequencer {
     tl.to({}, {
       duration: 0.01,
       onStart: () => {
-        this.stage = STAGES.DISPLAY;
         ps.setUniform('u_state', 0.0);
         ps.setUniform('u_noiseStrength', 0.1);
         ps.setUniform('u_noiseSpeed', 0.05);
       },
     });
-    tl.to({}, { duration: 5.0 });
+    tl.to({}, { duration: this._td(6.0) });
     return tl;
   }
 
@@ -96,30 +119,29 @@ export class AnimationSequencer {
     const tl = gsap.timeline();
     const stateObj = { value: 0.0 };
     const noiseObj = { strength: 0.1 };
+    const durUp = this._td(3.0);
+    const durDown = this._td(2.0);
     tl.to(stateObj, {
       value: 0.2,
-      duration: 3.0,
+      duration: durUp,
       ease: 'power2.in',
-      onStart: () => {
-        this.stage = STAGES.VORTEX;
-      },
       onUpdate: () => ps.setUniform('u_state', stateObj.value),
     });
     tl.to(noiseObj, {
       strength: 0.6,
-      duration: 3.0,
+      duration: durUp,
       ease: 'power2.in',
       onUpdate: () => ps.setUniform('u_noiseStrength', noiseObj.strength),
     }, '<');
     tl.to(stateObj, {
       value: 0.0,
-      duration: 2.0,
+      duration: durDown,
       ease: 'power2.out',
       onUpdate: () => ps.setUniform('u_state', stateObj.value),
     });
     tl.to(noiseObj, {
       strength: 0.1,
-      duration: 2.0,
+      duration: durDown,
       ease: 'power2.out',
       onUpdate: () => ps.setUniform('u_noiseStrength', noiseObj.strength),
     }, '<');
@@ -129,13 +151,11 @@ export class AnimationSequencer {
   _stageBurst(ps) {
     const tl = gsap.timeline();
     const stateObj = { value: 0.0 };
+    const dur = this._td(3.0);
     tl.to(stateObj, {
       value: 1.0,
-      duration: 2.0,
+      duration: dur,
       ease: 'power3.out',
-      onStart: () => {
-        this.stage = STAGES.BURST;
-      },
       onUpdate: () => ps.setUniform('u_state', stateObj.value),
     });
     tl.to({}, {
@@ -153,25 +173,35 @@ export class AnimationSequencer {
     if (!ps) return;
 
     this.kill();
+    ps.setUniform('u_transitionMode', parseFloat(this.currentMode));
 
     switch (stageName) {
-      case 'scatter':
-        ps.setUniform('u_state', 1.0);
+      case 'scatter': {
+        const stateObj = { value: ps.getUniform('u_state') ?? 0.0 };
         ps.setUniform('u_noiseStrength', 0.8);
         ps.setUniform('u_noiseSpeed', 0.2);
+        const tw = gsap.to(stateObj, {
+          value: 1.0,
+          duration: this._td(3.0),
+          ease: 'power2.out',
+          onUpdate: () => ps.setUniform('u_state', stateObj.value),
+        });
+        this.activeTweens.push(tw);
         break;
+      }
       case 'converge': {
-        const stateObj = { value: 1.0 };
+        const stateObj = { value: ps.getUniform('u_state') ?? 1.0 };
         const noiseObj = { strength: 0.8 };
+        const dur = this._td(5.0);
         const tw1 = gsap.to(stateObj, {
           value: 0.0,
-          duration: 3.0,
+          duration: dur,
           ease: 'power2.inOut',
           onUpdate: () => ps.setUniform('u_state', stateObj.value),
         });
         const tw2 = gsap.to(noiseObj, {
           strength: 0.15,
-          duration: 3.0,
+          duration: dur,
           ease: 'power2.inOut',
           onUpdate: () => ps.setUniform('u_noiseStrength', noiseObj.strength),
         });
@@ -187,7 +217,7 @@ export class AnimationSequencer {
         const vObj = { s: 0.0 };
         const tw = gsap.to(vObj, {
           s: 0.2,
-          duration: 2.0,
+          duration: this._td(2.0),
           ease: 'power2.in',
           onUpdate: () => {
             ps.setUniform('u_state', vObj.s);
@@ -201,4 +231,4 @@ export class AnimationSequencer {
   }
 }
 
-export { STAGES };
+export { TRANSITION_MODES };
