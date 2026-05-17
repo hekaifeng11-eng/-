@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { ParticleSystem } from './particle-system.js';
-import { ModelLoader } from './model-loader.js';
+import { ModelLoader, normalizeModel } from './model-loader.js';
 import { setupInteraction } from './interaction.js';
 import { setupPanel } from './panel.js';
 import { PostProcessing } from './post-processing.js';
 import { AnimationSequencer } from './animation-sequencer.js';
 import { PRESETS } from './presets.js';
 import { appState, getQualityCount } from './state.js';
+import { analyzeModel, classifyModelType } from './content-analyzer.js';
+import { mapModelToParams, generateThemeColorPalette, THEMES } from './param-mapper.js';
 
 let scene, camera, renderer, postProcessing;
 let particleRef = { current: null };
@@ -15,7 +17,11 @@ let sequencer;
 let guiRef = null;
 let visibleTween = null;
 let currentModelData = null;
+let currentModelProfile = null;
+let currentMappedParams = null;
 let isActive = false;
+
+let currentTheme = 'digital_art';
 
 const camState = {
   angle: 0,
@@ -59,7 +65,61 @@ function updateCamera() {
   camera.lookAt(0, 0, 0);
 }
 
-function createParticleSystem(data) {
+function enrichParticleColors(data, profile, params) {
+  if (data.attributes.color && profile.colorProfile && profile.colorProfile.isRich) {
+    const { saturation, brightness, contrast } = params.colorParams;
+    const colors = data.attributes.color;
+    for (let i = 0; i < data.count; i++) {
+      let r = colors[i * 3];
+      let g = colors[i * 3 + 1];
+      let b = colors[i * 3 + 2];
+
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      r = lum + (r - lum) * saturation;
+      g = lum + (g - lum) * saturation;
+      b = lum + (b - lum) * saturation;
+
+      r = lum + (r - lum) * contrast;
+      g = lum + (g - lum) * contrast;
+      b = lum + (b - lum) * contrast;
+
+      r = Math.min(1, Math.max(0, r * brightness));
+      g = Math.min(1, Math.max(0, g * brightness));
+      b = Math.min(1, Math.max(0, b * brightness));
+
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    }
+    return;
+  }
+
+  const palette = generateThemeColorPalette(profile, currentTheme);
+  const colors = new Float32Array(data.count * 3);
+
+  for (let i = 0; i < data.count; i++) {
+    const idx = i % palette.length;
+    const base = palette[idx];
+
+    if (data.attributes.color) {
+      const cr = data.attributes.color[i * 3];
+      const cg = data.attributes.color[i * 3 + 1];
+      const cb = data.attributes.color[i * 3 + 2];
+      colors[i * 3]     = (base[0] + cr) * 0.5;
+      colors[i * 3 + 1] = (base[1] + cg) * 0.5;
+      colors[i * 3 + 2] = (base[2] + cb) * 0.5;
+    } else {
+      const noise = (Math.random() - 0.5) * 0.15;
+      colors[i * 3]     = Math.min(1, Math.max(0, base[0] + noise));
+      colors[i * 3 + 1] = Math.min(1, Math.max(0, base[1] + noise));
+      colors[i * 3 + 2] = Math.min(1, Math.max(0, base[2] + noise));
+    }
+  }
+
+  data.attributes.color = colors;
+}
+
+function createParticleSystem(data, profile, params) {
   if (visibleTween) { visibleTween.kill(); visibleTween = null; }
   if (particleRef.current) {
     scene.remove(particleRef.current.points);
@@ -68,14 +128,51 @@ function createParticleSystem(data) {
   sequencer.kill();
 
   currentModelData = data;
+  currentModelProfile = profile;
+  currentMappedParams = params;
+
+  if (profile) {
+    console.log(`[ParticleEngine] 模型分析: ${data.count.toLocaleString()}顶点, 复杂度=${profile.complexity.toFixed(2)}, 对称性=${profile.symmetry.toFixed(2)}, 类型=[${(profile.classification||[]).join(', ')}]`);
+    if (profile.colorProfile) {
+      console.log(`[ParticleEngine] 色彩分析: 主色相=${(profile.colorProfile.dominantHue*360).toFixed(0)}°, 多样性=${profile.colorProfile.hueDiversity.toFixed(2)}, 饱和度=${profile.colorProfile.saturation.toFixed(2)}`);
+    }
+    console.log(`[ParticleEngine] 参数映射: springK=${params.springK.toFixed(2)}, damping=${params.damping.toFixed(3)}, curl=${params.curlStrength.toFixed(2)}, pointSize=${params.pointSize.toFixed(1)}, opacity=${params.opacity.toFixed(2)}`);
+    console.log(`[ParticleEngine] 主题: ${THEMES[currentTheme]?.label || currentTheme}`);
+  }
+
+  enrichParticleColors(data, profile || {}, params || {});
 
   const ps = new ParticleSystem(data.count, renderer, data.attributes.position, data.attributes.color);
   ps.points.frustumCulled = false;
-  ps.setUniform('u_state', 1.0);
+
+  ps.setUniform('u_visibleCount', data.count);
+  ps.setUniform('u_state', 0.0);
   ps.setUniform('u_life', 0.0);
+
+  if (params) {
+    ps.setUniform('u_springK', params.springK);
+    ps.setUniform('u_damping', params.damping);
+    ps.setUniform('u_curlStrength', params.curlStrength);
+    ps.setUniform('u_pointSize', params.pointSize);
+    ps.setUniform('u_opacity', params.opacity);
+    ps.setUniform('u_stretch', params.stretchFactor);
+  } else {
+    ps.setUniform('u_springK', 2.0);
+    ps.setUniform('u_damping', 0.955);
+    ps.setUniform('u_curlStrength', 0.3);
+    ps.setUniform('u_pointSize', 1.5);
+    ps.setUniform('u_opacity', 0.7);
+    ps.setUniform('u_stretch', 1.0);
+  }
+
+  ps.setUniform('u_vortexStrength', 0.0);
+
   particleRef.current = ps;
   scene.add(ps.points);
 
+  if (params) {
+    camState.orbitSpeed = params.orbitSpeed;
+  }
   camState.angle = 0;
   camState.distance = 500;
   camState.height = 0;
@@ -83,18 +180,60 @@ function createParticleSystem(data) {
   camState.zOffset = 0;
   updateCamera();
 
-  const visibleObj = { count: 0 };
-  visibleTween = gsap.to(visibleObj, {
+  if (params) {
+    postProcessing.setBloomParams(params.bloomStrength, params.bloomRadius, params.bloomThreshold);
+    appState.bloomStrength = params.bloomStrength;
+    appState.bloomRadius = params.bloomRadius;
+    appState.bloomThreshold = params.bloomThreshold;
+  }
+
+  const tweenDuration = params ? params.visibleTweenDuration : 2.5;
+  const visibleObj = { count: data.count };
+  visibleTween = gsap.fromTo(visibleObj, {
+    count: 0,
+  }, {
     count: data.count,
-    duration: 3.0,
+    duration: tweenDuration,
     ease: 'power2.out',
     onUpdate: () => ps.setUniform('u_visibleCount', visibleObj.count),
     onComplete: () => { visibleTween = null; },
   });
 
-  setTimeout(() => {
-    sequencer.playFullSequence();
-  }, 300);
+  if (appState.autoSequence) {
+    setTimeout(() => {
+      if (particleRef.current === ps) {
+        sequencer.playFullSequence();
+      }
+    }, 4000);
+  }
+
+  updateProfileInfoPanel(profile, params);
+}
+
+function updateProfileInfoPanel(profile, params) {
+  let el = document.getElementById('profile-info');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'profile-info';
+    el.style.cssText =
+      'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);'
+      + 'color:rgba(255,255,255,0.4);font:10px monospace;text-align:center;'
+      + 'pointer-events:none;z-index:25;transition:opacity 0.3s;';
+    document.body.appendChild(el);
+  }
+
+  if (!profile || !params) {
+    el.style.opacity = '0';
+    return;
+  }
+
+  const themeLabel = THEMES[currentTheme]?.label || currentTheme;
+  const types = profile.classification || [];
+  el.textContent = `${profile.vertexCount.toLocaleString()} particles · complexity ${(profile.complexity*100).toFixed(0)}% · ${types.slice(0, 3).join('+')} · ${themeLabel} theme`;
+  el.style.opacity = '1';
+
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => { el.style.opacity = '0'; }, 6000);
 }
 
 function showParticleCanvas() {
@@ -112,40 +251,149 @@ function showParticleCanvas() {
   renderer.domElement.style.pointerEvents = 'auto';
 
   setupInteraction(particleRef, camera, renderer);
-  guiRef = setupPanel(particleRef, camera, camState, postProcessing, sequencer);
+  guiRef = setupPanel(particleRef, camera, camState, postProcessing, sequencer, setTheme);
   setupParticleUI();
 }
 
 async function handleFile(file) {
+  if (!file) return;
+
   const ext = file.name.split('.').pop().toLowerCase();
-  showLoadingStatus(`正在解析 ${file.name}...`);
+  const supportedExts = ['glb', 'gltf', 'fbx', 'ply', 'obj'];
+
+  if (!supportedExts.includes(ext)) {
+    showLoadingStatus(`不支持的格式: .${ext} | 支持: OBJ, GLB, GLTF, FBX, PLY`);
+    setTimeout(hideLoadingStatus, 3000);
+    return;
+  }
+
+  const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+  console.log(`[ParticleEngine] ─── 拖拽导入开始 ───`);
+  console.log(`[ParticleEngine] 文件: ${file.name} (${fileSizeMB} MB, .${ext})`);
+
+  showLoadingStatus(`正在读取 ${file.name} (${fileSizeMB} MB)...`);
 
   try {
     let data;
-    if (ext === 'glb' || ext === 'gltf') {
+    const t0 = performance.now();
+
+    if (ext === 'glb') {
+      console.log('[ParticleEngine] 步骤1/5 解析 GLB (二进制 glTF)...');
       data = await ModelLoader.loadGLBFromFile(file);
+    } else if (ext === 'gltf') {
+      console.log('[ParticleEngine] 步骤1/5 解析 GLTF (JSON 文本)...');
+      data = await ModelLoader.loadGLTFFromFile(file);
     } else if (ext === 'fbx') {
+      console.log('[ParticleEngine] 步骤1/5 解析 FBX (自动检测 二进制/ASCII)...');
       data = await ModelLoader.loadFBXFromFile(file);
     } else if (ext === 'ply') {
+      console.log('[ParticleEngine] 步骤1/5 解析 PLY (ASCII 点云)...');
       const text = await file.text();
       const { parsePLY } = await import('./ply-loader.js');
       const plyResult = parsePLY(text);
+      console.log(`[ParticleEngine] PLY 解析完成: ${plyResult.count} 顶点, 颜色=${!!plyResult.colors}`);
       data = {
         attributes: { position: plyResult.positions, color: plyResult.colors },
         count: plyResult.count,
       };
-    } else {
-      showLoadingStatus(`不支持的格式: .${ext}`);
-      return;
+      normalizeModel(data.attributes.position);
+    } else if (ext === 'obj') {
+      console.log('[ParticleEngine] 步骤1/5 解析 OBJ (Wavefront)...');
+      data = await ModelLoader.loadOBJFromFile(file);
     }
 
-    console.log(`Loaded ${data.count} vertices from ${file.name}`);
+    const t1 = performance.now();
+    console.log(`[ParticleEngine] 步骤1/5 解析完成 (${(t1 - t0).toFixed(0)}ms)`);
+
+    if (!data || !data.attributes || !data.attributes.position) {
+      throw new Error('模型数据为空或无效 — 未提取到顶点数据');
+    }
+
+    const posLen = data.attributes.position.length;
+    const expectedLen = data.count * 3;
+    if (data.count === 0) {
+      throw new Error('模型数据为空 — 顶点数为0');
+    }
+    if (posLen < expectedLen) {
+      console.warn(`[ParticleEngine] 数据不一致: positions.length=${posLen}, count*3=${expectedLen}, 自动修正`);
+      data.count = Math.floor(posLen / 3);
+    }
+
+    console.log(`[ParticleEngine] 步骤2/5 数据验证: ${data.count.toLocaleString()} 顶点`);
+
+    showLoadingStatus(`分析模型特征...`);
+
+    const t1b = performance.now();
+    const profile = analyzeModel(data.attributes.position, data.attributes.color, data.count);
+    profile.classification = classifyModelType(profile);
+    const t2 = performance.now();
+    console.log(`[ParticleEngine] 步骤3/5 模型分析完成 (${(t2 - t1b).toFixed(0)}ms): 复杂度=${profile.complexity.toFixed(2)}, 对称=${profile.symmetry.toFixed(2)}, 类型=[${profile.classification.join(', ')}]`);
+
+    const params = mapModelToParams(profile, currentTheme);
+    const t3 = performance.now();
+    console.log(`[ParticleEngine] 步骤4/5 参数映射完成 (${(t3 - t2).toFixed(0)}ms)`);
+
+    showLoadingStatus(`生成 ${data.count.toLocaleString()} 粒子 · ${THEMES[currentTheme]?.label || currentTheme}风格`);
+
+    createParticleSystem(data, profile, params);
+
     showParticleCanvas();
-    createParticleSystem(data);
-    hideLoadingStatus();
+
+    const t4 = performance.now();
+    console.log(`[ParticleEngine] 步骤5/5 渲染就绪 (${(t4 - t3).toFixed(0)}ms)`);
+    console.log(`[ParticleEngine] ─── 导入完成，总耗时 ${(t4 - t0).toFixed(0)}ms ───`);
+
+    showLoadingStatus(`${data.count.toLocaleString()} 粒子 · ${THEMES[currentTheme]?.label || currentTheme} · 渲染中`);
+    setTimeout(hideLoadingStatus, 1500);
   } catch (err) {
-    console.error('File load failed:', err);
-    showLoadingStatus(`加载失败: ${err.message}`);
+    console.error(`[ParticleEngine] ─── 导入失败 ───`);
+    console.error(`[ParticleEngine] 文件: ${file.name}`, err);
+    showLoadingStatus(`加载失败: ${err.message || err}`);
+    setTimeout(hideLoadingStatus, 4000);
+  }
+}
+
+function setTheme(themeKey) {
+  if (!THEMES[themeKey]) return;
+  currentTheme = themeKey;
+  console.log(`[ParticleEngine] 主题切换: ${THEMES[themeKey].label}`);
+
+  if (currentModelProfile) {
+    const params = mapModelToParams(currentModelProfile, currentTheme);
+    currentMappedParams = params;
+    const ps = particleRef.current;
+    if (ps) {
+      ps.setUniform('u_springK', params.springK);
+      ps.setUniform('u_damping', params.damping);
+      ps.setUniform('u_curlStrength', params.curlStrength);
+      ps.setUniform('u_pointSize', params.pointSize);
+      ps.setUniform('u_opacity', params.opacity);
+      ps.setUniform('u_stretch', params.stretchFactor);
+      camState.orbitSpeed = params.orbitSpeed;
+      postProcessing.setBloomParams(params.bloomStrength, params.bloomRadius, params.bloomThreshold);
+      appState.bloomStrength = params.bloomStrength;
+      appState.bloomRadius = params.bloomRadius;
+      appState.bloomThreshold = params.bloomThreshold;
+
+      updateProfileInfoPanel(currentModelProfile, params);
+
+      const palette = generateThemeColorPalette(currentModelProfile, currentTheme);
+      const colors = currentModelData.attributes.color;
+      if (colors) {
+        for (let i = 0; i < currentModelData.count && i * 3 < colors.length; i++) {
+          const base = palette[i % palette.length];
+          const noise = (Math.random() - 0.5) * 0.08;
+          colors[i * 3]     = Math.min(1, Math.max(0, base[0] + noise));
+          colors[i * 3 + 1] = Math.min(1, Math.max(0, base[1] + noise));
+          colors[i * 3 + 2] = Math.min(1, Math.max(0, base[2] + noise));
+        }
+        ps.points.geometry.attributes.a_color.needsUpdate = true;
+      }
+    }
+  }
+
+  if (guiRef && guiRef.updateDisplay) {
+    guiRef.updateDisplay();
   }
 }
 
@@ -263,7 +511,7 @@ function setupLandingPage() {
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.glb,.gltf,.fbx,.ply';
+  fileInput.accept = '.obj,.glb,.gltf,.fbx,.ply';
   fileInput.style.display = 'none';
 
   dropZone.addEventListener('dragover', (e) => {
@@ -299,7 +547,7 @@ function setupLandingPage() {
 
   const formats = document.createElement('div');
   formats.className = 'landing-formats';
-  formats.textContent = 'SUPPORTED  ·  GLB  ·  GLTF  ·  FBX  ·  PLY';
+  formats.textContent = 'SUPPORTED  ·  OBJ  ·  GLB  ·  GLTF  ·  FBX  ·  PLY';
   landing.appendChild(formats);
 
   document.body.appendChild(landing);
@@ -316,26 +564,74 @@ function setupParticleUI() {
     + 'background:linear-gradient(to bottom,rgba(10,10,15,0.85),transparent);'
     + 'pointer-events:none;';
 
-  Object.keys(PRESETS).forEach(name => {
+  Object.keys(THEMES).forEach(themeKey => {
+    const theme = THEMES[themeKey];
     const btn = document.createElement('button');
-    btn.textContent = name;
+    btn.textContent = theme.label;
+    btn.dataset.theme = themeKey;
     btn.style.cssText =
-      'padding:5px 14px;border:1px solid rgba(255,255,255,0.15);'
+      'padding:5px 12px;border:1px solid rgba(255,255,255,0.15);'
       + 'border-radius:4px;background:rgba(255,255,255,0.04);'
       + 'color:rgba(255,255,255,0.5);font:11px monospace;cursor:pointer;'
       + 'transition:all 0.2s ease;pointer-events:auto;';
+    if (themeKey === currentTheme) {
+      btn.style.borderColor = 'rgba(255,255,255,0.5)';
+      btn.style.color = 'rgba(255,255,255,0.9)';
+      btn.style.background = 'rgba(255,255,255,0.08)';
+    }
     btn.addEventListener('mouseenter', () => {
       btn.style.borderColor = 'rgba(255,255,255,0.4)';
       btn.style.color = 'rgba(255,255,255,0.9)';
     });
     btn.addEventListener('mouseleave', () => {
-      btn.style.borderColor = 'rgba(255,255,255,0.15)';
-      btn.style.color = 'rgba(255,255,255,0.5)';
+      if (btn.dataset.theme !== currentTheme) {
+        btn.style.borderColor = 'rgba(255,255,255,0.15)';
+        btn.style.color = 'rgba(255,255,255,0.5)';
+        btn.style.background = 'rgba(255,255,255,0.04)';
+      }
+    });
+    btn.addEventListener('click', () => {
+      const themeKeyClicked = btn.dataset.theme;
+      setTheme(themeKeyClicked);
+
+      const allBtns = topBar.querySelectorAll('button[data-theme]');
+      allBtns.forEach(b => {
+        if (b.dataset.theme === themeKeyClicked) {
+          b.style.borderColor = 'rgba(255,255,255,0.5)';
+          b.style.color = 'rgba(255,255,255,0.9)';
+          b.style.background = 'rgba(255,255,255,0.08)';
+        } else {
+          b.style.borderColor = 'rgba(255,255,255,0.15)';
+          b.style.color = 'rgba(255,255,255,0.5)';
+          b.style.background = 'rgba(255,255,255,0.04)';
+        }
+      });
+    });
+    topBar.appendChild(btn);
+  });
+
+  Object.keys(PRESETS).forEach(name => {
+    const btn = document.createElement('button');
+    btn.textContent = name;
+    btn.style.cssText =
+      'padding:5px 14px;border:1px solid rgba(255,255,255,0.12);'
+      + 'border-radius:4px;background:rgba(255,255,255,0.03);'
+      + 'color:rgba(255,255,255,0.4);font:11px monospace;cursor:pointer;'
+      + 'transition:all 0.2s ease;pointer-events:auto;';
+    btn.addEventListener('mouseenter', () => {
+      btn.style.borderColor = 'rgba(255,255,255,0.35)';
+      btn.style.color = 'rgba(255,255,255,0.8)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'rgba(255,255,255,0.12)';
+      btn.style.color = 'rgba(255,255,255,0.4)';
     });
     btn.addEventListener('click', () => {
       const gen = PRESETS[name];
       const data = gen(appState.particleCount);
-      createParticleSystem(data);
+      const profile = analyzeModel(data.attributes.position, data.attributes.color, data.count);
+      const params = mapModelToParams(profile, currentTheme);
+      createParticleSystem(data, profile, params);
     });
     topBar.appendChild(btn);
   });
@@ -360,7 +656,7 @@ function setupParticleUI() {
 
   const fileInput2 = document.createElement('input');
   fileInput2.type = 'file';
-  fileInput2.accept = '.glb,.gltf,.fbx,.ply';
+  fileInput2.accept = '.obj,.glb,.gltf,.fbx,.ply';
   fileInput2.style.display = 'none';
 
   miniDrop.addEventListener('dragover', (e) => {
@@ -451,7 +747,10 @@ function animate() {
         appState.qualityLevel = Math.max(0, appState.qualityLevel - 1);
         appState.particleCount = getQualityCount();
         lowFpsCount = 0;
-        if (currentModelData) createParticleSystem(currentModelData);
+        if (currentModelData && currentModelProfile) {
+          const params = mapModelToParams(currentModelProfile, currentTheme);
+          createParticleSystem(currentModelData, currentModelProfile, params);
+        }
       }
     } else {
       lowFpsCount = 0;

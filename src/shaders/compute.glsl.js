@@ -1,6 +1,7 @@
 export const computePositionFrag = `
 uniform float u_dt;
 uniform float u_life;
+uniform sampler2D positionTexture;
 
 void main() {
     vec2 uv = gl_FragCoord.xy / resolution;
@@ -45,6 +46,7 @@ uniform vec3 u_vortexCenter;
 uniform vec3 u_mousePos;
 uniform float u_mouseStrength;
 
+uniform sampler2D velocityTexture;
 uniform sampler2D targetTexture;
 uniform sampler2D scatterTexture;
 

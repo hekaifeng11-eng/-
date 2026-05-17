@@ -5,8 +5,8 @@ export const appState = {
   autoSequence: true,
   bloomEnabled: true,
   bloomStrength: 0.8,
-  bloomRadius: 0.4,
-  bloomThreshold: 0.85,
+  bloomRadius: 0.45,
+  bloomThreshold: 0.75,
 };
 
 export function getQualityCount() {

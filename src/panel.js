@@ -1,13 +1,24 @@
 import GUI from 'lil-gui';
 import { appState } from './state.js';
+import { THEMES } from './param-mapper.js';
 
-export function setupPanel(particleRef, camera, camState, postProcessing, sequencer) {
-  const gui = new GUI({ title: '粒子引擎 v7' });
+export function setupPanel(particleRef, camera, camState, postProcessing, sequencer, setTheme = null) {
+  const gui = new GUI({ title: '粒子引擎 v7', width: 280 });
+
+  if (setTheme) {
+    const tf = gui.addFolder('主题风格');
+    tf.add({
+      get theme() { return 'digital_art'; },
+      set theme(v) { setTheme(v); },
+    }, 'theme', Object.keys(THEMES).reduce((acc, k) => { acc[k] = k; return acc; }, {}))
+      .name('切换主题');
+    tf.open();
+  }
 
   const pf = gui.addFolder('粒子');
-  pf.add({ get v() { return particleRef.current?.getUniform('u_pointSize') ?? 4; }, set v(val) { particleRef.current?.setUniform('u_pointSize', val); } }, 'v', 1, 20)
+  pf.add({ get v() { return particleRef.current?.getUniform('u_pointSize') ?? 1.8; }, set v(val) { particleRef.current?.setUniform('u_pointSize', val); } }, 'v', 0.5, 8)
     .name('大小');
-  pf.add({ get v() { return particleRef.current?.getUniform('u_opacity') ?? 0.85; }, set v(val) { particleRef.current?.setUniform('u_opacity', val); } }, 'v', 0.1, 1.0)
+  pf.add({ get v() { return particleRef.current?.getUniform('u_opacity') ?? 0.7; }, set v(val) { particleRef.current?.setUniform('u_opacity', val); } }, 'v', 0.1, 1.0)
     .name('透明度');
   pf.add({ get v() { return particleRef.current?.getUniform('u_stretch') ?? 1.0; }, set v(val) { particleRef.current?.setUniform('u_stretch', val); } }, 'v', 0, 5.0)
     .name('拉伸强度');

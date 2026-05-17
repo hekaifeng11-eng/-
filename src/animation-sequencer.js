@@ -47,8 +47,8 @@ export class AnimationSequencer {
       onStart: () => {
         this.stage = STAGES.SCATTER;
         ps.setUniform('u_state', 1.0);
-        ps.setUniform('u_springK', 0.05);
-        ps.setUniform('u_damping', 0.98);
+        ps.setUniform('u_springK', 0.3);
+        ps.setUniform('u_damping', 0.95);
         ps.setUniform('u_curlStrength', 0.8);
         ps.setUniform('u_vortexStrength', 0.0);
         ps.setUniform('u_life', 0.15);
@@ -67,8 +67,8 @@ export class AnimationSequencer {
       ease: 'power2.inOut',
       onStart: () => {
         this.stage = STAGES.CONVERGE;
-        ps.setUniform('u_springK', 0.15);
-        ps.setUniform('u_damping', 0.96);
+        ps.setUniform('u_springK', 1.0);
+        ps.setUniform('u_damping', 0.92);
         ps.setUniform('u_curlStrength', 0.3);
         ps.setUniform('u_life', 0.0);
       },
@@ -84,8 +84,8 @@ export class AnimationSequencer {
       onStart: () => {
         this.stage = STAGES.DISPLAY;
         ps.setUniform('u_state', 0.0);
-        ps.setUniform('u_springK', 0.2);
-        ps.setUniform('u_damping', 0.97);
+        ps.setUniform('u_springK', 1.0);
+        ps.setUniform('u_damping', 0.92);
         ps.setUniform('u_curlStrength', 0.15);
         ps.setUniform('u_life', 0.0);
       },
@@ -103,8 +103,8 @@ export class AnimationSequencer {
       ease: 'power2.in',
       onStart: () => {
         this.stage = STAGES.VORTEX;
-        ps.setUniform('u_springK', 0.08);
-        ps.setUniform('u_damping', 0.94);
+        ps.setUniform('u_springK', 0.5);
+        ps.setUniform('u_damping', 0.92);
         ps.setUniform('u_curlStrength', 0.5);
       },
       onUpdate: () => ps.setUniform('u_vortexStrength', vortexObj.strength),
@@ -127,8 +127,8 @@ export class AnimationSequencer {
       ease: 'power3.out',
       onStart: () => {
         this.stage = STAGES.BURST;
-        ps.setUniform('u_springK', 0.03);
-        ps.setUniform('u_damping', 0.99);
+        ps.setUniform('u_springK', 0.2);
+        ps.setUniform('u_damping', 0.95);
         ps.setUniform('u_curlStrength', 1.0);
         ps.setUniform('u_life', 0.1);
       },
@@ -146,8 +146,8 @@ export class AnimationSequencer {
     switch (stageName) {
       case 'scatter':
         ps.setUniform('u_state', 1.0);
-        ps.setUniform('u_springK', 0.05);
-        ps.setUniform('u_damping', 0.98);
+        ps.setUniform('u_springK', 0.3);
+        ps.setUniform('u_damping', 0.95);
         ps.setUniform('u_curlStrength', 0.8);
         ps.setUniform('u_vortexStrength', 0.0);
         ps.setUniform('u_life', 0.15);
@@ -160,8 +160,8 @@ export class AnimationSequencer {
           ease: 'power2.inOut',
           onUpdate: () => ps.setUniform('u_state', stateObj.value),
           onStart: () => {
-            ps.setUniform('u_springK', 0.15);
-            ps.setUniform('u_damping', 0.96);
+            ps.setUniform('u_springK', 1.0);
+            ps.setUniform('u_damping', 0.92);
             ps.setUniform('u_curlStrength', 0.3);
             ps.setUniform('u_vortexStrength', 0.0);
             ps.setUniform('u_life', 0.0);
@@ -172,8 +172,8 @@ export class AnimationSequencer {
       }
       case 'display':
         ps.setUniform('u_state', 0.0);
-        ps.setUniform('u_springK', 0.2);
-        ps.setUniform('u_damping', 0.97);
+        ps.setUniform('u_springK', 1.0);
+        ps.setUniform('u_damping', 0.92);
         ps.setUniform('u_curlStrength', 0.15);
         ps.setUniform('u_vortexStrength', 0.0);
         ps.setUniform('u_life', 0.0);
@@ -186,8 +186,8 @@ export class AnimationSequencer {
           ease: 'power2.in',
           onUpdate: () => ps.setUniform('u_vortexStrength', vObj.s),
           onStart: () => {
-            ps.setUniform('u_springK', 0.08);
-            ps.setUniform('u_damping', 0.94);
+            ps.setUniform('u_springK', 0.5);
+            ps.setUniform('u_damping', 0.92);
             ps.setUniform('u_curlStrength', 0.5);
             ps.setUniform('u_life', 0.0);
           },

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 const MAX_PARTICLES = 500000;
 
@@ -96,12 +97,6 @@ function mergeGeometries(geometries, meshes) {
       pos[i * 3 + 2] = pAttr.array[localIdx * 3 + 2];
     }
 
-    if (needsJitter) {
-      pos[i * 3]     += (Math.random() - 0.5) * 2.0;
-      pos[i * 3 + 1] += (Math.random() - 0.5) * 2.0;
-      pos[i * 3 + 2] += (Math.random() - 0.5) * 2.0;
-    }
-
     if (col) {
       let colorSet = false;
 
@@ -153,6 +148,7 @@ function mergeGeometries(geometries, meshes) {
   return {
     attributes: { position: pos, color: col },
     count,
+    needsJitter,
   };
 }
 
@@ -189,7 +185,7 @@ function collectGeometries(object) {
   return { geos, meshes };
 }
 
-export function normalizeModel(positions) {
+export function normalizeModel(positions, needsJitter = false) {
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   const count = positions.length / 3;
@@ -215,10 +211,12 @@ export function normalizeModel(positions) {
   const maxExtent = Math.max(sx, sy, sz, 0.001);
   const scale = 400 / maxExtent;
 
+  const jitter = needsJitter ? 1.2 : 0;
+
   for (let i = 0; i < count; i++) {
-    positions[i * 3]     = (positions[i * 3]     - cx) * scale;
-    positions[i * 3 + 1] = (positions[i * 3 + 1] - cy) * scale;
-    positions[i * 3 + 2] = (positions[i * 3 + 2] - cz) * scale;
+    positions[i * 3]     = (positions[i * 3]     - cx) * scale + (needsJitter ? (Math.random() - 0.5) * jitter : 0);
+    positions[i * 3 + 1] = (positions[i * 3 + 1] - cy) * scale + (needsJitter ? (Math.random() - 0.5) * jitter : 0);
+    positions[i * 3 + 2] = (positions[i * 3 + 2] - cz) * scale + (needsJitter ? (Math.random() - 0.5) * jitter : 0);
   }
 
   return { scale, center: [cx, cy, cz], extent: [sx, sy, sz] };
@@ -236,7 +234,7 @@ export class ModelLoader {
               const { geos, meshes } = collectGeometries(gltf.scene);
               if (geos.length === 0) return reject(new Error('No meshes found in GLB'));
               const data = mergeGeometries(geos, meshes);
-              normalizeModel(data.attributes.position);
+              normalizeModel(data.attributes.position, data.needsJitter);
               disposeScene(gltf.scene);
               resolve(data);
             } catch (e) {
@@ -244,7 +242,7 @@ export class ModelLoader {
             }
           },
           undefined,
-          err => reject(new Error(`GLB load failed: ${err.message}`))
+          err => reject(new Error(`GLB load failed: ${err ? err.message || err : 'unknown error'}`))
         );
       } catch (e) {
         reject(e);
@@ -255,32 +253,44 @@ export class ModelLoader {
   static loadGLBFromFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           const loader = new GLTFLoader();
-          loader.parse(
-            reader.result,
-            '',
-            gltf => {
-              try {
-                const { geos, meshes } = collectGeometries(gltf.scene);
-                if (geos.length === 0) return reject(new Error('No meshes found in GLB'));
-                const data = mergeGeometries(geos, meshes);
-                normalizeModel(data.attributes.position);
-                disposeScene(gltf.scene);
-                resolve(data);
-              } catch (e) {
-                reject(e);
-              }
-            },
-            err => reject(new Error(`GLB parse failed: ${err.message}`))
-          );
+          const gltf = await loader.parseAsync(reader.result, '');
+          const { geos, meshes } = collectGeometries(gltf.scene);
+          if (geos.length === 0) return reject(new Error('No meshes found in GLB'));
+          const data = mergeGeometries(geos, meshes);
+          normalizeModel(data.attributes.position, data.needsJitter);
+          disposeScene(gltf.scene);
+          resolve(data);
         } catch (e) {
-          reject(e);
+          reject(new Error(`GLB parse failed: ${e.message || e}`));
         }
       };
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsArrayBuffer(file);
+    });
+  }
+
+  static loadGLTFFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const loader = new GLTFLoader();
+          const gltf = await loader.parseAsync(reader.result, '');
+          const { geos, meshes } = collectGeometries(gltf.scene);
+          if (geos.length === 0) return reject(new Error('No meshes found in GLTF'));
+          const data = mergeGeometries(geos, meshes);
+          normalizeModel(data.attributes.position, data.needsJitter);
+          disposeScene(gltf.scene);
+          resolve(data);
+        } catch (e) {
+          reject(new Error(`GLTF parse failed: ${e.message || e}`));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
     });
   }
 
@@ -295,7 +305,7 @@ export class ModelLoader {
               const { geos, meshes } = collectGeometries(group);
               if (geos.length === 0) return reject(new Error('No meshes found in FBX'));
               const data = mergeGeometries(geos, meshes);
-              normalizeModel(data.attributes.position);
+              normalizeModel(data.attributes.position, data.needsJitter);
               disposeScene(group);
               resolve(data);
             } catch (e) {
@@ -303,7 +313,7 @@ export class ModelLoader {
             }
           },
           undefined,
-          err => reject(new Error(`FBX load failed: ${err.message}`))
+          err => reject(new Error(`FBX load failed: ${err ? err.message || err : 'unknown error'}`))
         );
       } catch (e) {
         reject(e);
@@ -317,11 +327,18 @@ export class ModelLoader {
       reader.onload = () => {
         try {
           const loader = new FBXLoader();
-          const group = loader.parse(reader.result, '');
+          let group;
+          try {
+            group = loader.parse(reader.result, '');
+          } catch (parseErr) {
+            const decoder = new TextDecoder();
+            const text = decoder.decode(reader.result);
+            group = loader.parse(text, '');
+          }
           const { geos, meshes } = collectGeometries(group);
           if (geos.length === 0) return reject(new Error('No meshes found in FBX'));
           const data = mergeGeometries(geos, meshes);
-          normalizeModel(data.attributes.position);
+          normalizeModel(data.attributes.position, data.needsJitter);
           disposeScene(group);
           resolve(data);
         } catch (e) {
@@ -330,6 +347,28 @@ export class ModelLoader {
       };
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsArrayBuffer(file);
+    });
+  }
+
+  static loadOBJFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const loader = new OBJLoader();
+          const group = loader.parse(reader.result);
+          const { geos, meshes } = collectGeometries(group);
+          if (geos.length === 0) return reject(new Error('No meshes found in OBJ'));
+          const data = mergeGeometries(geos, meshes);
+          normalizeModel(data.attributes.position, data.needsJitter);
+          disposeScene(group);
+          resolve(data);
+        } catch (e) {
+          reject(new Error(`OBJ parse failed: ${e.message || e}`));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
     });
   }
 }

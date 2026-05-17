@@ -53,21 +53,21 @@ export function parsePLY(text) {
 
   for (let i = 0; i < vertexCount && lineIdx < lines.length; i++) {
     const line = lines[lineIdx++].trim();
-    if (!line) { i--; continue; }
+    if (!line) continue;
     const vals = line.split(/\s+/).map(Number);
     if (vals.length < 3) continue;
 
-    positions[i * 3]     = vals[propX] || 0;
-    positions[i * 3 + 1] = vals[propY] || 0;
-    positions[i * 3 + 2] = vals[propZ] || 0;
+    positions[count * 3]     = vals[propX] || 0;
+    positions[count * 3 + 1] = vals[propY] || 0;
+    positions[count * 3 + 2] = vals[propZ] || 0;
 
     if (colors) {
-      colors[i * 3]     = (vals[propR] || 0) / 255;
-      colors[i * 3 + 1] = (vals[propG] || 0) / 255;
-      colors[i * 3 + 2] = (vals[propB] || 0) / 255;
+      colors[count * 3]     = (vals[propR] || 0) / 255;
+      colors[count * 3 + 1] = (vals[propG] || 0) / 255;
+      colors[count * 3 + 2] = (vals[propB] || 0) / 255;
     }
     count++;
   }
 
-  return { positions, colors, count };
+  return { positions: positions.subarray(0, count * 3), colors: colors ? colors.subarray(0, count * 3) : null, count };
 }
