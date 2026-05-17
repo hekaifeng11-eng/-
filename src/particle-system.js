@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
-import { computePositionFrag, computeVelocityFrag } from './shaders/compute.glsl.js';
 import { renderVertex, renderFragment } from './shaders/render.glsl.js';
 
 const SCATTER_RADIUS = 800;
@@ -39,11 +37,9 @@ export class ParticleSystem {
     this.texWidth = w;
     this.texHeight = hPot;
 
-    console.log(`[ParticleSystem] GPU纹理尺寸: ${w}x${hPot} (texSize=${texSize}, particles=${count.toLocaleString()})`);
+    console.log(`[ParticleSystem] GPU纹理尺寸: ${w}x${hPot} (particles=${count.toLocaleString()})`);
 
-    this.gpuCompute = new GPUComputationRenderer(w, hPot, renderer);
-    this.gpuCompute.setDataType(THREE.FloatType);
-
+    // 目标纹理（模型顶点）
     const targetData = new Float32Array(w * hPot * 4);
     for (let i = 0; i < count && i * 3 < targetPositions.length; i++) {
       targetData[i * 4]     = targetPositions[i * 3];
@@ -56,6 +52,7 @@ export class ParticleSystem {
     this.targetTexture.magFilter = THREE.NearestFilter;
     this.targetTexture.needsUpdate = true;
 
+    // 散射纹理（随机球面）
     const scatterData = new Float32Array(w * hPot * 4);
     for (let i = 0; i < count; i++) {
       const [sx, sy, sz] = randomInSphere(SCATTER_RADIUS);
@@ -69,61 +66,7 @@ export class ParticleSystem {
     this.scatterTexture.magFilter = THREE.NearestFilter;
     this.scatterTexture.needsUpdate = true;
 
-    const posData = new Float32Array(w * hPot * 4);
-    for (let i = 0; i < count && i * 3 < targetPositions.length; i++) {
-      posData[i * 4]     = targetPositions[i * 3];
-      posData[i * 4 + 1] = targetPositions[i * 3 + 1];
-      posData[i * 4 + 2] = targetPositions[i * 3 + 2];
-      posData[i * 4 + 3] = 0.5 + Math.random() * 1.5;
-    }
-    this.positionTexture = this.gpuCompute.createTexture();
-    this.positionTexture.image.data.set(posData);
-
-    const velData = new Float32Array(w * hPot * 4);
-    this.velocityTexture = this.gpuCompute.createTexture();
-    this.velocityTexture.image.data.set(velData);
-
-    this.posVar = this.gpuCompute.addVariable('positionTexture', computePositionFrag, this.positionTexture);
-    this.velVar = this.gpuCompute.addVariable('velocityTexture', computeVelocityFrag, this.velocityTexture);
-
-    this.gpuCompute.setVariableDependencies(this.posVar, [this.posVar, this.velVar]);
-    this.gpuCompute.setVariableDependencies(this.velVar, [this.velVar, this.posVar]);
-
-    const pu = this.posVar.material.uniforms;
-    pu.u_dt           = { value: 0.016 };
-    pu.u_life         = { value: 0.0 };
-
-    const vu = this.velVar.material.uniforms;
-    vu.u_dt           = { value: 0.016 };
-    vu.u_damping      = { value: 0.955 };
-    vu.u_springK      = { value: 2.0 };
-    vu.u_curlStrength = { value: 0.3 };
-    vu.u_state        = { value: 0.0 };
-    vu.u_time         = { value: 0 };
-    vu.u_maxVel       = { value: 500.0 };
-    vu.u_vortexStrength = { value: 0.0 };
-    vu.u_vortexCenter   = { value: new THREE.Vector3(0, 0, 0) };
-    vu.u_mousePos       = { value: new THREE.Vector3(0, 0, 0) };
-    vu.u_mouseStrength  = { value: 0.0 };
-    vu.targetTexture    = { value: this.targetTexture };
-    vu.scatterTexture   = { value: this.scatterTexture };
-
-    console.log('[ParticleSystem] 初始化 GPU 计算管线...');
-    const initError = this.gpuCompute.init();
-    if (initError !== null && initError !== undefined) {
-      throw new Error('GPU computation init failed: ' + initError);
-    }
-    console.log('[ParticleSystem] GPU 计算管线就绪');
-
-    console.log(`[ParticleSystem] 诊断: targetTexture前5个顶点:`,
-      Array.from(targetPositions.slice(0, 15)).map(v => v.toFixed(2)));
-    console.log(`[ParticleSystem] 诊断: targetData纹理前20个float:`,
-      Array.from(targetData.slice(0, 20)).map(v => v.toFixed(2)));
-    console.log(`[ParticleSystem] 诊断: posData纹理前20个float:`,
-      Array.from(posData.slice(0, 20)).map(v => v.toFixed(2)));
-    console.log(`[ParticleSystem] 诊断: velData纹理前20个float:`,
-      Array.from(velData.slice(0, 20)).map(v => v.toFixed(2)));
-
+    // UV 数组
     const uvArray = new Float32Array(count * 2);
     for (let i = 0; i < count; i++) {
       const px = i % w;
@@ -132,6 +75,7 @@ export class ParticleSystem {
       uvArray[i * 2 + 1] = (py + 0.5) / hPot;
     }
 
+    // 颜色
     const colorArray = colors || new Float32Array(count * 3);
     if (!colors) {
       for (let i = 0; i < count; i++) {
@@ -142,12 +86,7 @@ export class ParticleSystem {
       }
     }
 
-    const geometry = new THREE.BufferGeometry();
-    const dummyPos = new Float32Array(count * 3);
-    geometry.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
-    geometry.setAttribute('a_uv', new THREE.BufferAttribute(uvArray, 2));
-    geometry.setAttribute('a_color', new THREE.BufferAttribute(colorArray, 3));
-
+    // 软光晕圆形纹理
     const circleSize = 64;
     const circleDataRGBA = new Uint8Array(circleSize * circleSize * 4);
     for (let y = 0; y < circleSize; y++) {
@@ -167,69 +106,51 @@ export class ParticleSystem {
       THREE.RGBAFormat, THREE.UnsignedByteType);
     circleTexture.needsUpdate = true;
 
+    // 渲染材质
     this.renderMat = new THREE.ShaderMaterial({
       vertexShader: renderVertex,
       fragmentShader: renderFragment,
       uniforms: {
-        u_positionTexture: { value: null },
-        u_velocityTexture: { value: null },
-        u_pointSize:       { value: 4.0 },
-        u_opacity:         { value: 0.85 },
-        u_stretch:         { value: 1.0 },
-        u_visibleCount:    { value: 0.0 },
-        u_texWidth:        { value: w },
-        u_texHeight:       { value: hPot },
-        u_circleTexture:   { value: circleTexture },
+        u_targetTexture: { value: this.targetTexture },
+        u_scatterTexture: { value: this.scatterTexture },
+        u_state:        { value: 0.0 },
+        u_time:         { value: 0.0 },
+        u_pointSize:    { value: 4.0 },
+        u_opacity:      { value: 0.85 },
+        u_stretch:      { value: 1.0 },
+        u_visibleCount: { value: 0.0 },
+        u_texWidth:     { value: w },
+        u_texHeight:    { value: hPot },
+        u_circleTexture:{ value: circleTexture },
+        u_noiseStrength:{ value: 0.3 },
+        u_noiseSpeed:   { value: 0.15 },
       },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
 
+    // 几何体
+    const geometry = new THREE.BufferGeometry();
+    const dummyPos = new Float32Array(count * 3);
+    geometry.setAttribute('position', new THREE.BufferAttribute(dummyPos, 3));
+    geometry.setAttribute('a_uv', new THREE.BufferAttribute(uvArray, 2));
+    geometry.setAttribute('a_color', new THREE.BufferAttribute(colorArray, 3));
+
     this.points = new THREE.Points(geometry, this.renderMat);
-    console.log('[ParticleSystem] 粒子系统构建完成');
+    console.log('[ParticleSystem] 粒子系统构建完成 (无GPU Compute)');
   }
 
   update(dt, time) {
-    // 诊断模式：跳过 GPU compute，直接用 target 模型顶点作为粒子位置
-    this.renderMat.uniforms.u_positionTexture.value = this.targetTexture;
-    this.renderMat.uniforms.u_velocityTexture.value = this.velocityTexture;
-    return;
-
-    if (!this._diagDone) {
-      this._diagDone = true;
-      try {
-        const posRT = this.gpuCompute.getCurrentRenderTarget(this.posVar);
-        const velRT = this.gpuCompute.getCurrentRenderTarget(this.velVar);
-        const posPixels = new Float32Array(4 * 4);
-        const velPixels = new Float32Array(4 * 4);
-        const renderer = this.gpuCompute.renderer;
-        renderer.readRenderTargetPixels(posRT, 0, 0, 1, 4, posPixels);
-        renderer.readRenderTargetPixels(velRT, 0, 0, 1, 4, velPixels);
-        console.log(`[ParticleSystem] GPU回读 position(0,0)~(0,3):`,
-          Array.from(posPixels).map(v => v.toFixed(3)));
-        console.log(`[ParticleSystem] GPU回读 velocity(0,0)~(0,3):`,
-          Array.from(velPixels).map(v => v.toFixed(3)));
-      } catch (e) {
-        console.warn('[ParticleSystem] GPU回读失败:', e.message);
-      }
-    }
+    this.renderMat.uniforms.u_time.value = time;
   }
 
   setUniform(name, value) {
-    const pu = this.posVar.material.uniforms;
-    if (name in pu) { pu[name].value = value; return; }
-    const vu = this.velVar.material.uniforms;
-    if (name in vu) { vu[name].value = value; return; }
     const ru = this.renderMat.uniforms;
     if (name in ru) { ru[name].value = value; return; }
   }
 
   getUniform(name) {
-    const pu = this.posVar.material.uniforms;
-    if (name in pu) return pu[name].value;
-    const vu = this.velVar.material.uniforms;
-    if (name in vu) return vu[name].value;
     const ru = this.renderMat.uniforms;
     if (name in ru) return ru[name].value;
     return undefined;
@@ -241,6 +162,5 @@ export class ParticleSystem {
     this.renderMat.dispose();
     this.targetTexture.dispose();
     this.scatterTexture.dispose();
-    this.gpuCompute.dispose();
   }
 }

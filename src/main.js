@@ -136,7 +136,7 @@ function createParticleSystem(data, profile, params) {
     if (profile.colorProfile) {
       console.log(`[ParticleEngine] 色彩分析: 主色相=${(profile.colorProfile.dominantHue*360).toFixed(0)}°, 多样性=${profile.colorProfile.hueDiversity.toFixed(2)}, 饱和度=${profile.colorProfile.saturation.toFixed(2)}`);
     }
-    console.log(`[ParticleEngine] 参数映射: springK=${params.springK.toFixed(2)}, damping=${params.damping.toFixed(3)}, curl=${params.curlStrength.toFixed(2)}, pointSize=${params.pointSize.toFixed(1)}, opacity=${params.opacity.toFixed(2)}`);
+    console.log(`[ParticleEngine] 参数映射: noiseStrength=${params.noiseStrength.toFixed(2)}, noiseSpeed=${params.noiseSpeed.toFixed(2)}, pointSize=${params.pointSize.toFixed(1)}, opacity=${params.opacity.toFixed(2)}`);
     console.log(`[ParticleEngine] 主题: ${THEMES[currentTheme]?.label || currentTheme}`);
   }
 
@@ -147,25 +147,20 @@ function createParticleSystem(data, profile, params) {
 
   ps.setUniform('u_visibleCount', data.count);
   ps.setUniform('u_state', 0.0);
-  ps.setUniform('u_life', 0.0);
 
   if (params) {
-    ps.setUniform('u_springK', params.springK);
-    ps.setUniform('u_damping', params.damping);
-    ps.setUniform('u_curlStrength', params.curlStrength);
+    ps.setUniform('u_noiseStrength', params.noiseStrength);
+    ps.setUniform('u_noiseSpeed', params.noiseSpeed);
     ps.setUniform('u_pointSize', params.pointSize);
     ps.setUniform('u_opacity', params.opacity);
     ps.setUniform('u_stretch', params.stretchFactor);
   } else {
-    ps.setUniform('u_springK', 2.0);
-    ps.setUniform('u_damping', 0.955);
-    ps.setUniform('u_curlStrength', 0.3);
+    ps.setUniform('u_noiseStrength', 0.3);
+    ps.setUniform('u_noiseSpeed', 0.15);
     ps.setUniform('u_pointSize', 1.5);
     ps.setUniform('u_opacity', 0.7);
     ps.setUniform('u_stretch', 1.0);
   }
-
-  ps.setUniform('u_vortexStrength', 0.0);
 
   particleRef.current = ps;
   scene.add(ps.points);
@@ -363,9 +358,8 @@ function setTheme(themeKey) {
     currentMappedParams = params;
     const ps = particleRef.current;
     if (ps) {
-      ps.setUniform('u_springK', params.springK);
-      ps.setUniform('u_damping', params.damping);
-      ps.setUniform('u_curlStrength', params.curlStrength);
+      ps.setUniform('u_noiseStrength', params.noiseStrength);
+      ps.setUniform('u_noiseSpeed', params.noiseSpeed);
       ps.setUniform('u_pointSize', params.pointSize);
       ps.setUniform('u_opacity', params.opacity);
       ps.setUniform('u_stretch', params.stretchFactor);

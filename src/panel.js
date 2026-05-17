@@ -3,7 +3,7 @@ import { appState } from './state.js';
 import { THEMES } from './param-mapper.js';
 
 export function setupPanel(particleRef, camera, camState, postProcessing, sequencer, setTheme = null) {
-  const gui = new GUI({ title: '粒子引擎 v7', width: 280 });
+  const gui = new GUI({ title: '粒子引擎 v9', width: 280 });
 
   if (setTheme) {
     const tf = gui.addFolder('主题风格');
@@ -25,16 +25,12 @@ export function setupPanel(particleRef, camera, camState, postProcessing, sequen
   pf.open();
 
   const df = gui.addFolder('动态');
-  df.add({ get v() { return particleRef.current?.getUniform('u_springK') ?? 0.15; }, set v(val) { particleRef.current?.setUniform('u_springK', val); } }, 'v', 0.01, 0.5)
-    .name('弹簧刚度');
-  df.add({ get v() { return particleRef.current?.getUniform('u_damping') ?? 0.96; }, set v(val) { particleRef.current?.setUniform('u_damping', val); } }, 'v', 0.9, 1.0, 0.001)
-    .name('阻尼');
-  df.add({ get v() { return particleRef.current?.getUniform('u_curlStrength') ?? 0.3; }, set v(val) { particleRef.current?.setUniform('u_curlStrength', val); } }, 'v', 0, 2.0)
-    .name('curl强度');
-  df.add({ get v() { return particleRef.current?.getUniform('u_life') ?? 0.0; }, set v(val) { particleRef.current?.setUniform('u_life', val); } }, 'v', 0, 0.5, 0.01)
-    .name('生命衰减');
-  df.add({ get v() { return particleRef.current?.getUniform('u_vortexStrength') ?? 0; }, set v(val) { particleRef.current?.setUniform('u_vortexStrength', val); } }, 'v', 0, 30)
-    .name('涡旋强度');
+  df.add({ get v() { return particleRef.current?.getUniform('u_noiseStrength') ?? 0.3; }, set v(val) { particleRef.current?.setUniform('u_noiseStrength', val); } }, 'v', 0, 1.5)
+    .name('噪声强度');
+  df.add({ get v() { return particleRef.current?.getUniform('u_noiseSpeed') ?? 0.15; }, set v(val) { particleRef.current?.setUniform('u_noiseSpeed', val); } }, 'v', 0.01, 0.5)
+    .name('噪声速度');
+  df.add({ get v() { return particleRef.current?.getUniform('u_state') ?? 0.0; }, set v(val) { particleRef.current?.setUniform('u_state', val); } }, 'v', 0, 1)
+    .name('散射/汇聚');
   df.open();
 
   const sf = gui.addFolder('阶段');

@@ -1,9 +1,8 @@
 export const THEMES = {
   'touchdesigner': {
     label: 'TouchDesigner',
-    springK: 2.5,
-    damping: 0.94,
-    curlStrength: 0.6,
+    noiseStrength: 0.6,
+    noiseSpeed: 0.18,
     pointSize: 2.0,
     opacity: 0.75,
     bloomStrength: 1.0,
@@ -16,9 +15,8 @@ export const THEMES = {
   },
   'digital_art': {
     label: '数字艺术',
-    springK: 1.8,
-    damping: 0.955,
-    curlStrength: 0.4,
+    noiseStrength: 0.3,
+    noiseSpeed: 0.15,
     pointSize: 1.8,
     opacity: 0.7,
     bloomStrength: 0.8,
@@ -31,9 +29,8 @@ export const THEMES = {
   },
   'ai_generated': {
     label: 'AI生成',
-    springK: 1.2,
-    damping: 0.962,
-    curlStrength: 0.5,
+    noiseStrength: 0.25,
+    noiseSpeed: 0.12,
     pointSize: 1.6,
     opacity: 0.65,
     bloomStrength: 0.9,
@@ -46,9 +43,8 @@ export const THEMES = {
   },
   'loot': {
     label: 'Loot',
-    springK: 2.0,
-    damping: 0.95,
-    curlStrength: 0.35,
+    noiseStrength: 0.35,
+    noiseSpeed: 0.1,
     pointSize: 2.2,
     opacity: 0.8,
     bloomStrength: 1.2,
@@ -61,9 +57,8 @@ export const THEMES = {
   },
   'visual': {
     label: '视觉冲击',
-    springK: 3.0,
-    damping: 0.93,
-    curlStrength: 0.8,
+    noiseStrength: 0.8,
+    noiseSpeed: 0.22,
     pointSize: 2.5,
     opacity: 0.85,
     bloomStrength: 1.5,
@@ -76,9 +71,8 @@ export const THEMES = {
   },
   'scifi': {
     label: '科幻',
-    springK: 2.2,
-    damping: 0.95,
-    curlStrength: 0.45,
+    noiseStrength: 0.4,
+    noiseSpeed: 0.16,
     pointSize: 1.7,
     opacity: 0.72,
     bloomStrength: 1.1,
@@ -114,28 +108,19 @@ export function mapModelToParams(profile, themeOverride = null) {
   const isCompact = types.includes('compact') || types.includes('spherical');
   const isElongated = types.includes('elongated') || types.includes('tall');
 
-  const springK = clamp(
-    themeBase.springK
-    + (isComplex ? 0.5 : 0)
-    + (isSymmetric ? -0.3 : 0)
-    + (isFlat ? 0.2 : 0)
-    + (densityFactor > 0.7 ? -0.2 : 0),
-    0.5, 5.0
-  );
-
-  const damping = clamp(
-    themeBase.damping
-    + (isComplex ? 0.01 : 0)
-    + (densityFactor > 0.5 ? -0.01 : 0.01),
-    0.9, 0.99
-  );
-
-  const curlStrength = clamp(
-    themeBase.curlStrength
-    + (isComplex ? 0.15 : -0.1)
-    + (isSymmetric ? -0.1 : 0)
+  const noiseStrength = clamp(
+    themeBase.noiseStrength
+    + (isComplex ? 0.1 : -0.05)
+    + (isSymmetric ? -0.05 : 0.05)
     + (complexityFactor * 0.3),
-    0.05, 1.5
+    0.05, 1.2
+  );
+
+  const noiseSpeed = clamp(
+    themeBase.noiseSpeed
+    + (isComplex ? 0.03 : 0)
+    + (isElongated ? 0.02 : 0),
+    0.03, 0.35
   );
 
   const pointSize = clamp(
@@ -198,9 +183,8 @@ export function mapModelToParams(profile, themeOverride = null) {
   );
 
   return {
-    springK,
-    damping,
-    curlStrength,
+    noiseStrength,
+    noiseSpeed,
     pointSize,
     opacity,
     bloomStrength,
